@@ -7,149 +7,7 @@
 //            output: {chat_out: {chat_reply: JCODE, chat_edit: DB編集query}}
 //                JCODE : 
 //                DB編集query: {}あるいは{"editSDB": ... ]のJSONコード
-/*
 
-var chat; 
-var intent;
-var context;
-var focus; 
-
-input: {chat_in: "ログ解析を開始してください。"} -> start-log-analysis (scodeレベル)
-   var chat_content = "start('log-analysis')"; 
-     *この辺がポイント。述語関数形式に変換。
-     *本来 startは動詞。しかしenjuは名詞として扱う。なので、ここは例外的にstartを分離。
-     *たとえば「ログ解析を終了」はfinish<VNA> log-analysisとなる。
-　　 *なので "finish('log-analysis')"とできる。
-   chat = true;
-   context = chat_content; //本セッションが終わるまでの保存
-   in the place between scode and jcode
-      if chat == true 
-      then chat_anaylysis(chat_content); // "start('log-analysis')"
-
-   function chat_analysis(content)
-     intent = 'start';
-
-     eval(content); // start('log-analysis')
-     in start(..)関数内
-       case of 'log-analysis'
-         (a-1) var log = get_log_summary();
-         (a-2) var not_answered = "UnionPayは使える。"; // kind_no 2
-                * notpoper_answer: kind_no 4
-                * unsatisfied_answer: kind_no 3
-         (b-1) 文生成
-           var confirmed = "はい";   // phrase_confirmed(intent, context);
-           var answer = "お客様から" + not_answered + という問い合わせがあり、答えられませんでした。"; 
-               // phrase_answer(intent, context, log_ans(kind_no, not_answer))
-           var reply = confirm+answer;
-         (b-2) chat_output生成
-           {chat_out: {chat_reply:{replyJDB: reply}, chat_edit: {}}
-
-input: {chat_in: "UnionPayはクレジットカードです。"} 
-       -> 'unionpay' + 'be' + 'credit-card'  : A is B  AはBのインスタンス。
-          「太郎は犬です。」はあり。「犬は太郎です。」は普通ない。
-   chat_content = "is_a('unionpay', 'credit-card')";
-   focus = 'uniopay';
-   chat = true;
- 
-   in the place between scode and jcode
-      if chat == true 
-      then chat_anaylysis(chat_content); // "is_a('unionpay', 'credit-card')"
-
-   function chat_analysis(content)
-     intent = 'is_a'
-
-     eval(content);   // is_a('unionpay', 'credit-card')
-     in is_a(..)関数内
-       仮定： 'credit-card'はデータベース内のクラスの1つ
-              'unionpay'はそのレコードの1つ。
-　　　 var dbedit = {};
-       dbedit['class] = 'credit-card'; 
-       dbedit['add_instance'] = 'unionpay';
-       //文生成
-       var confirmed = "わかりました。"; // phrase_confirmed(intent, context);
-       var answer = "どこで使えるのでしょうか。";
-           // phrase_answer(intent, context, db_ans(chat_content);
-           // is_a, credit_card, .. => どこで+使える
-       var reply = confirm+answer;
-
-       //chat_output生成
-       {chat_out: {chat_reply:{replyJDB: reply}, chat_edit: dbedit}} 
-       　//ただし、現時点では本件無視される。unionpayのレコードは予め登録済みとする。
-
-input: {chat_in: "セブン銀行で使えます。"}
-     -> 'can'+'use'+'it'+'at'+'seven-bank'
-     'it'が'uniopay'を参照する(focus);
-     chat_content = "can_use_at('unionpay', 'seven-bank')";
-     chat_content = "add_link('unionpay', 'seven-bank')"; //verb ontology for database
-     
-  function chat_analysis(content)
-    intent = 'can_use_at';
-
-    eval(content); can_use_at('unionpay', 'seven-bank');
-    if can_use_at(...)関数内
-　　   var dbedit = {};
-       dbedit['class'] = 'credit-card':
-       dbedit['instance'] = 'unionpay';
-       dbedit['add_link'] = 'seven-bank';
-
-    conifrm = ""; // phrase_confirmed(intent, context);
-    answer = "UnionPayをセブン銀行に紐づけます。"; 
-       // phrase_answer(intent, context, db_ans(chat_content));
-    reply = confirm +answer
-   
-    //chat_output生成
-   {chat_out: {replyJDB: reply}, chat_edit: dbedit }}
-
-input: {chat_in: "よろしくお願いします。"}
-   -> 'thank'+'you'
-   reset session;
-   {chat_out: {replyJDB: 'session_end'}, chat_edit: {}}
-
-------
-
-E:ログ解析を開始してください。 
-A:はい。お客様から「コインロッカーの場所。」という問い合わせがあり、答えること
-はできたのですが、「大きなサイズのカバンが入るコインロッカーを知りたい。」には答
-えることが出来ませんでした。 
-E：大きなサイズのコインロッカーは〇〇にあります。（注：〇〇には実際の名称を使
-用）
-The large size coin lockers are next to the central ticket gate.
---sfcode--
-{}
-{"ADJ":"large","pos":"JJ"}
-{"N":"size-coin-locker"}
-{"VNA":"be","arg1":"locker","arg2":"next"}
-{"ADJ":"next","pos":"JJ"}
-{"P":"to","pos":"TO"}
-{}
-{"ADJ":"central","pos":"JJ"}
-{"N":"ticket-gate"}
-undefined
-scode: [ { N: undefined },
-  { ADJ: 'large', pos: 'JJ' },
-  { N: 'size-coin-locker' },
-  { VNA: 'be', arg1: 'locker', arg2: 'next' },
-  { ADJ: 'next', pos: 'JJ' },
-  { P: 'to', pos: 'TO' },
-  { N: undefined },
-  { ADJ: 'central', pos: 'JJ' },
-  { N: 'ticket-gate' } ]  rule: []
-
-A：ありがとうございます。私はサイズに関する情報を持っていません。情報の追加を
-お願いします。 
-E：了解しました。
-⇒どこかのタイイングで、【データベース編集画面】開く。
-「コインロッカー」データベースにサイズを登録 
-
-
-A：よろしくお願いします。
-
-⇒データベースキーsizeおよび大きさの種類 
-large/middle/smallに関し、AI
-知らない前提。それを言葉で教えることもできるが。。。保留。
-
-
-*/       
 
 //   matsuda@monogocoro.co.jp   2018.11
 //
@@ -168,7 +26,7 @@ const Realm = require('realm');
 
 var debug = false;
 var debugC = false;
-var print = true;
+var print = false;
 var sfprint = true;
 
 
@@ -209,8 +67,14 @@ function interpreter(language, mode_flag, line0) {
     //    mode_flag: 'none'（通常) | 'select'（選択） | 'command'（音声コマンド）
     //var line = voice_correct(line0); // 音声入力からテキスト変換の誤りを訂正
     var line = line0;
-    chat = false;
-    //line = '{"chat_in": "ログ解析開始。"}';
+    //chat = false;
+    chat = true;  //強制chatモード。テスト用。
+    //1. '{"chat_in": "ログ解析を開始してください。"}';
+    //1-2. '{"chat_in": "UnionPayはクレジットカードです。"} ';
+    //1-3. '{"chat_in": "セブン銀行で使えます。"}';
+    //1-4. '{"chat_in": "よろしくお願いします。"}';
+    //2. '{"chat_in": "ログ解析を開始してください。"}';
+    line = '{"chat_in": "ログ解析を開始してください。"}';
     if (line[0] === '{'){
 	chat = true;
         line = JSON.parse(line).chat_in;
@@ -418,16 +282,6 @@ function get_enju_json(text0, language) {
     return json;
 }
 
-
-// get_session_summary
-function get_session_summary(nth){
-    var url = 'https://preprocessor.monogocoro.ai/session_summaries/show'+nth;
-    var request = require('sync-request');
-    var res = request('GET', url);
-    return res.getBody('utf8');
-}
-
-//console.log(JSON.parse(get_session_summary("")));
 
 // get_enju_json 補助関数: get_ja2en
 function get_ja2en(text) {
@@ -1564,13 +1418,292 @@ function deepCopy(obj) {
     return copy;
 }
 
+/*
+
+var chat; 
+var intent;
+var context;
+var focus; 
+
+input: {chat_in: "ログ解析を開始してください。"} -> start-log-analysis (scodeレベル)
+   var chat_content = "start('log-analysis')"; 
+     *この辺がポイント。述語関数形式に変換。
+     *本来 startは動詞。しかしenjuは名詞として扱う。なので、ここは例外的にstartを分離。
+     *たとえば「ログ解析を終了」はfinish<VNA> log-analysisとなる。
+　　 *なので "finish('log-analysis')"とできる。
+   chat = true;
+   context = chat_content; //本セッションが終わるまでの保存
+   in the place between scode and jcode
+      if chat == true 
+      then chat_anaylysis(chat_content); // "start('log-analysis')"
+
+   function chat_analysis(content)
+     intent = 'start';
+
+     eval(content); // start('log-analysis')
+     in start(..)関数内
+       case of 'log-analysis'
+         (a-1) var log = get_log_summary();
+         (a-2) var not_answered = "UnionPayは使える。"; // kind_no 2
+                * notpoper_answer: kind_no 4
+                * unsatisfied_answer: kind_no 3
+         (b-1) 文生成
+           var confirmed = "はい";   // phrase_confirmed(intent, context);
+           var answer = "お客様から" + not_answered + という問い合わせがあり、答えられませんでした。"; 
+               // phrase_answer(intent, context, log_ans(kind_no, not_answer))
+           var reply = confirm+answer;
+         (b-2) chat_output生成
+           {chat_out: {chat_reply:{replyJDB: reply}, chat_edit: {}}
+
+input: {chat_in: "UnionPayはクレジットカードです。"} 
+       -> 'unionpay' + 'be' + 'credit-card'  : A is B  AはBのインスタンス。
+          「太郎は犬です。」はあり。「犬は太郎です。」は普通ない。
+   chat_content = "is_a('unionpay', 'credit-card')";
+   focus = 'uniopay';
+   chat = true;
+ 
+   in the place between scode and jcode
+      if chat == true 
+      then chat_anaylysis(chat_content); // "is_a('unionpay', 'credit-card')"
+
+   function chat_analysis(content)
+     intent = 'is_a'
+
+     eval(content);   // is_a('unionpay', 'credit-card')
+     in is_a(..)関数内
+       仮定： 'credit-card'はデータベース内のクラスの1つ
+              'unionpay'はそのレコードの1つ。
+　　　 var dbedit = {};
+       dbedit['class] = 'credit-card'; 
+       dbedit['add_instance'] = 'unionpay';
+       //文生成
+       var confirmed = "わかりました。"; // phrase_confirmed(intent, context);
+       var answer = "どこで使えるのでしょうか。";
+           // phrase_answer(intent, context, db_ans(chat_content);
+           // is_a, credit_card, .. => どこで+使える
+       var reply = confirm+answer;
+
+       //chat_output生成
+       {chat_out: {chat_reply:{replyJDB: reply}, chat_edit: dbedit}} 
+       　//ただし、現時点では本件無視される。unionpayのレコードは予め登録済みとする。
+
+input: {chat_in: "セブン銀行で使えます。"}
+     -> 'can'+'use'+'it'+'at'+'seven-bank'
+     'it'が'uniopay'を参照する(focus);
+     chat_content = "can_use_at('unionpay', 'seven-bank')";
+     chat_content = "add_link('unionpay', 'seven-bank')"; //verb ontology for database
+     
+  function chat_analysis(content)
+    intent = 'can_use_at';
+
+    eval(content); can_use_at('unionpay', 'seven-bank');
+    if can_use_at(...)関数内
+　　   var dbedit = {};
+       dbedit['class'] = 'credit-card':
+       dbedit['instance'] = 'unionpay';
+       dbedit['add_link'] = 'seven-bank';
+
+    conifrm = ""; // phrase_confirmed(intent, context);
+    answer = "UnionPayをセブン銀行に紐づけます。"; 
+       // phrase_answer(intent, context, db_ans(chat_content));
+    reply = confirm +answer
+   
+    //chat_output生成
+   {chat_out: {replyJDB: reply}, chat_edit: dbedit }}
+
+input: {chat_in: "よろしくお願いします。"}
+   -> 'thank'+'you'
+   reset session;
+   {chat_out: {replyJDB: 'session_end'}, chat_edit: {}}
+
+------
+
+E:ログ解析を開始してください。 
+A:はい。お客様から「コインロッカーの場所。」という問い合わせがあり、答えること
+はできたのですが、「大きなサイズのカバンが入るコインロッカーを知りたい。」には答
+えることが出来ませんでした。 
+E：大きなサイズのコインロッカーは〇〇にあります。（注：〇〇には実際の名称を使
+用）
+The large size coin lockers are next to the central ticket gate.
+--sfcode--
+{}
+{"ADJ":"large","pos":"JJ"}
+{"N":"size-coin-locker"}
+{"VNA":"be","arg1":"locker","arg2":"next"}
+{"ADJ":"next","pos":"JJ"}
+{"P":"to","pos":"TO"}
+{}
+{"ADJ":"central","pos":"JJ"}
+{"N":"ticket-gate"}
+undefined
+scode: [ { N: undefined },
+  { ADJ: 'large', pos: 'JJ' },
+  { N: 'size-coin-locker' },
+  { VNA: 'be', arg1: 'locker', arg2: 'next' },
+  { ADJ: 'next', pos: 'JJ' },
+  { P: 'to', pos: 'TO' },
+  { N: undefined },
+  { ADJ: 'central', pos: 'JJ' },
+  { N: 'ticket-gate' } ]  rule: []
+
+A：ありがとうございます。私はサイズに関する情報を持っていません。情報の追加を
+お願いします。 
+E：了解しました。
+⇒どこかのタイイングで、【データベース編集画面】開く。
+「コインロッカー」データベースにサイズを登録 
+
+
+A：よろしくお願いします。
+
+⇒データベースキーsizeおよび大きさの種類 
+large/middle/smallに関し、AI
+知らない前提。それを言葉で教えることもできるが。。。保留。
+*/       
+
+/*
+input: {chat_in: "よろしくお願いします。"}
+   -> 'thank'+'you'
+   reset session;
+   {chat_out: {replyJDB: 'session_end'}, chat_edit: {}}
+
+*/
+
+var intent;
+var context;
+var dbedit;
 function generateChatCode(){
-    var confirmed = "はい。";
-    var answer = "お客様から" + "「UnionPayが使えない。」" + "という問い合わせがあり、答えられませんでした。";
+    //1. "start('log-analysis')";
+    //1-2. "is_a('unionpay', 'creadit-card')";
+    //1-3. "can_use_at('unionpay', 'seven-bank')";
+    var chat_content = contentAnalysis(scode); 
+    // intent set_in contentAnalysis(scode);
+    context = chat_content;
+    console.log("chat_content:", chat_content);
+
+    //1. "はい。";
+    //1-2. "わかりました。";
+    var confirmed = generateConfirm(intent, context);
+    //1. "お客様から" + "「UnionPayが使えない。」" + "という問い合わせがあり、答えられませんでした。"
+    //1-2. ""
+    var answer = eval(chat_content);
     var reply = confirmed+answer;
-    var chatcode = JSON.stringify({chat_out: {chat_reply:{replyJDB: reply}, chat_edit: {}}});
+    var chatcode = JSON.stringify({chat_out: {chat_reply:{replyJDB: reply}, chat_edit: dbedit}});
     return chatcode;
 }
+
+function contentAnalysis(code){
+    var key = getkey(code[0]);
+    var value = getvalue(code[0]);
+    //console.log("key:",key, " value:", value);
+    if (key == "N" && code.length == 1){
+	var pred = predicateHead(code, 1);
+    } else if (key == "N" && code.length == 3){ //A is B.
+	var pred = predicateHead(code, 2);
+    } else if (code[1].auxV == "can" && code[2].VNA == "use" && code[3].N == "it"){ //you can use it at ...
+	var pred = predicateHead(code, 3);
+    } else if (code[0].VNA = "thank" && code[1].N == "you"){ //thank you
+	var pred = predicateHead(code, 4);
+    }
+    return pred; 
+}
+
+function predicateHead(code, index){
+    var pred
+    switch(index){
+    case 1:
+	//N: "start-log-analysis"
+	//pred: "start('log-analysis')"
+	var tokens = (code[0].N).split("-");
+	intent = tokens[0];
+	var s = tokens[1];
+	for (var i = 2; i < tokens.length; i++){
+	    s = s + '-' + tokens[i];
+	}
+	pred = tokens[0] + "('" + s + "')";
+	return pred;
+    case 2:
+	// A is B => is_a('A', 'B')
+	pred = "is_a('" + code[0].N +"','" + code[2].N + "')";
+	intent = "is_a";
+	return pred;
+    case 3:
+	pred = "can_use_at('unionpay', 'seven-bank')";
+	intent = "can_use_at";
+	return pred;
+    case 4:
+	pred = "thank_you()";
+	intent = "thank_you";
+	return pred;
+    defaul: return null;	
+    }
+}
+
+function generateConfirm(intent, context){
+    var ans = "";
+    switch(intent){
+    case 'start': ans = "はい。"; break;
+    case 'is_a': ans = "わかりました。"; break;
+    case 'can_ust_at': ans = ""; break;
+    case 'thank_you': ans = "どういたしまして。"; break;
+    default: null;
+    }
+    return ans;
+}
+
+var log_session = 1;
+function start(command){
+    console.log("start:", command);
+    switch(command){
+    case 'log-analysis':
+	var log = JSON.parse(get_session_summary(2)); //log_session
+	dbedit = {};
+	console.log(log);
+	break;
+    default:
+	null;
+    }
+    // ログ解析
+    var r;
+    switch(log_session){
+    case 1:
+	r = "お客様から" + "「UnionPayが使えない。」" + "という問い合わせがあり、答えられませんでした。";
+	break;
+    }
+    return r;
+}
+
+function is_a(A, B){
+    dbedit = {};
+    dbedit['class'] = A;
+    dbedit['add_record'] = B;
+    var r = "";
+    return r;
+}
+
+function can_use_at(obj, place){
+    dbedit = {};
+    dbedit['class'] = 'credit-card';
+    dbedit['record'] = 'unionpay';
+    dbedit['add_link'] = 'seven-bank';
+
+    var r = "UnionPayをセブン銀行に紐づけます。"; 
+    return r;
+}
+
+function thank_you(){
+    dbedit = {};
+    log_session = log_session + 1;
+    return "";
+}
+
+// get_session_summary
+function get_session_summary(nth){
+    var url = 'https://preprocessor.monogocoro.ai/session_summaries/show/'+nth;
+    var request = require('sync-request');
+    var res = request('GET', url);
+    return res.getBody('utf8');
+}
+
 
 // ------------------------------------------------------
 // 入力テスト
