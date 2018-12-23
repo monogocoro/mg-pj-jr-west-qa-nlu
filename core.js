@@ -105,6 +105,50 @@ input: {chat_in: "よろしくお願いします。"}
    reset session;
    {chat_out: {replyJDB: 'session_end'}, chat_edit: {}}
 
+------
+
+E:ログ解析を開始してください。 
+A:はい。お客様から「コインロッカーの場所。」という問い合わせがあり、答えること
+はできたのですが、「大きなサイズのカバンが入るコインロッカーを知りたい。」には答
+えることが出来ませんでした。 
+E：大きなサイズのコインロッカーは〇〇にあります。（注：〇〇には実際の名称を使
+用）
+The large size coin lockers are next to the central ticket gate.
+--sfcode--
+{}
+{"ADJ":"large","pos":"JJ"}
+{"N":"size-coin-locker"}
+{"VNA":"be","arg1":"locker","arg2":"next"}
+{"ADJ":"next","pos":"JJ"}
+{"P":"to","pos":"TO"}
+{}
+{"ADJ":"central","pos":"JJ"}
+{"N":"ticket-gate"}
+undefined
+scode: [ { N: undefined },
+  { ADJ: 'large', pos: 'JJ' },
+  { N: 'size-coin-locker' },
+  { VNA: 'be', arg1: 'locker', arg2: 'next' },
+  { ADJ: 'next', pos: 'JJ' },
+  { P: 'to', pos: 'TO' },
+  { N: undefined },
+  { ADJ: 'central', pos: 'JJ' },
+  { N: 'ticket-gate' } ]  rule: []
+
+A：ありがとうございます。私はサイズに関する情報を持っていません。情報の追加を
+お願いします。 
+E：了解しました。
+⇒どこかのタイイングで、【データベース編集画面】開く。
+「コインロッカー」データベースにサイズを登録 
+
+
+A：よろしくお願いします。
+
+⇒データベースキーsizeおよび大きさの種類 
+large/middle/smallに関し、AI
+知らない前提。それを言葉で教えることもできるが。。。保留。
+
+
 */       
 
 //   matsuda@monogocoro.co.jp   2018.11
