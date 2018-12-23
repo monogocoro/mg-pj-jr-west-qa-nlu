@@ -1,0 +1,273 @@
+【強化学習チャットボット画面１】 
+(A: AI, E:駅員)
+
+⇒チャットボットを呼び出す。現在作成済み 
+coreをチャットボット用に改良 
+
+
+E:ログ解析を開始してください。
+Start log analysis.
+--sfcode--
+{"N":"start-log-analysis"}
+undefined
+scode: [ { N: 'start-log-analysis' } ]  rule: []
+
+A:はい。お客様から「 
+UnionPayは使える。」という問い合わせがあり、答えられませ
+んでした。
+⇒（はい。で）指示を理解。
+⇒ログを解析し、答えられなかった質問へのアドバイスを求める 
+
+E: UnionPayはクレジットカードです。
+{"N":"unionpay"}
+{"VNA":"be","arg1":"unionpay","arg2":"card"}
+{"N":"credit-card"}
+undefined
+scode: [ { N: 'unionpay' },
+  { VNA: 'be', arg1: 'unionpay', arg2: 'card' },
+  { N: 'credit-card' } ]  rule: []
+
+A：わかりました。どこで使えるのでしょうか。
+⇒（わかりました。で）クレジットカード 
+DBに 
+UnionPayを追加。 
+
+E：セブン銀行で使えます。
+--sfcode--
+{"N":"you"}
+{"auxV":"can"}
+{"VNA":"use","arg1":"you","arg2":"it"}
+{"N":"it"}
+{"P":"at","pos":"IN"}
+{"N":"seven-bank"}
+undefined
+scode: [ { N: 'you' },
+  { auxV: 'can' },
+  { VNA: 'use', arg1: 'you', arg2: 'it' },
+  { N: 'it' },
+  { P: 'at', pos: 'IN' },
+  { N: 'seven-bank' } ]  rule: []
+
+A：UnionPayをセブン銀行に紐づけます。
+⇒クレジットカード 
+DBの 
+UnionPay使用可能銀行欄にセブン銀行登録 
+
+
+E：よろしくお願いします。
+Thank you.
+--sfcode--
+{"VNA":"thank","arg2":"you"}
+{"N":"you"}
+undefined
+scode: [ { VNA: 'thank', arg1: null, arg2: 'you' }, { N: 'you' } ]  rule: []
+{"replyJDB":{"greeting":"You are welcome.#どういたしまして。"}}
+
+【FAQ実機デモ１】（A：AI、C：お客様）
+こちらは現在作成済み 
+coreを使用。 
+
+C：UnionPayを使いたい。
+I want to use UnionPay.
+--sfcode--
+{"N":"i"}
+{"VNA":"want","arg1":"i","arg2":"use"}
+{"C":"to","pos":"TO","arg1":"use"}
+{"VNA":"use","arg1":"i","arg2":"unionpay"}
+{"N":"unionpay"}
+undefined
+scode: [ { N: 'i' },
+  { VNA: 'want', arg1: 'i', arg2: 'use' },
+  { C: 'to', pos: 'TO', arg1: 'use' },
+  { VNA: 'use', arg1: 'i', arg2: 'unionpay' },
+  { N: 'unionpay' } ]  rule: []
+
+A：かしこまりました。UnionPayはこちらでお使いになれます。
+
+⇒（かしこまりました。で）意図を理解。
+
+ついで 
+{querySDB: { 
+station: default_station, 
+place: {name: ‘atm’, brand: ‘UnionPay}}}を
+
+自分（今は統合部）に発行
+
+＊ここでクレジットカードを 
+ATMの紐づけを 
+AIは予め知っている。 
+
+
+[セブン銀行の 
+ATMの場所が画面表示される。
+
+
+E:ログ解析を開始してください。 
+A:はい。お客様から「コインロッカーの場所。」という問い合わせがあり、答えること
+はできたのですが、「大きなサイズのカバンが入るコインロッカーを知りたい。」には答
+えることが出来ませんでした。 
+E：大きなサイズのコインロッカーは〇〇にあります。（注：〇〇には実際の名称を使
+用）
+The large size coin lockers are next to the central ticket gate.
+--sfcode--
+{}
+{"ADJ":"large","pos":"JJ"}
+{"N":"size-coin-locker"}
+{"VNA":"be","arg1":"locker","arg2":"next"}
+{"ADJ":"next","pos":"JJ"}
+{"P":"to","pos":"TO"}
+{}
+{"ADJ":"central","pos":"JJ"}
+{"N":"ticket-gate"}
+undefined
+scode: [ { N: undefined },
+  { ADJ: 'large', pos: 'JJ' },
+  { N: 'size-coin-locker' },
+  { VNA: 'be', arg1: 'locker', arg2: 'next' },
+  { ADJ: 'next', pos: 'JJ' },
+  { P: 'to', pos: 'TO' },
+  { N: undefined },
+  { ADJ: 'central', pos: 'JJ' },
+  { N: 'ticket-gate' } ]  rule: []
+
+A：ありがとうございます。私はサイズに関する情報を持っていません。情報の追加を
+お願いします。 
+E：了解しました。
+⇒どこかのタイイングで、【データベース編集画面】開く。
+「コインロッカー」データベースにサイズを登録 
+
+
+A：よろしくお願いします。
+
+⇒データベースキーsizeおよび大きさの種類 
+large/middle/smallに関し、AI
+知らない前提。それを言葉で教えることもできるが。。。保留。
+
+【FAQ実機デモ画面２】 
+
+
+C：大きなサイズのコインロッカー探しているのですが。
+I'm looking for a large size coin locker.
+--sfcode--
+{"N":"i"}
+{"auxV":"be"}
+{"VPA":"look","arg1":"i"}
+{"P":"for","pos":"IN"}
+{}
+{"ADJ":"large","pos":"JJ"}
+{"N":"size-coin-locker"}
+undefined
+scode: [ { N: 'i' },
+  { auxV: 'be' },
+  { VPA: 'look', arg1: 'i', arg2: null },
+  { P: 'for', pos: 'IN' },
+  { N: undefined },
+  { ADJ: 'large', pos: 'JJ' },
+  { N: 'size-coin-locker' } ]  rule: []
+
+A：かしこまりました。大きなサイズのコインロッカーはこちらにございます。 
+⇒ 
+{querySDB: { 
+station:default_station, 
+place: {name: ‘coin-locker’, sizd: ‘large’}}}
+
+【案内表示画面】
+
+
+E：ログ解析を開始してください。 
+A：はい。お客様から「やさか納涼祭はどこ。」という問い合わせがあり答えられませ
+んでした。 
+E：データベース登録しておきます。
+⇒【データベース編集画面】を開く
+イベント欄に「やさか納涼祭」を追加。同時に、場所、期間も追加。 
+
+ 
+A：よろしくお願いします。
+【FAQ実機デモ画面３】 
+
+
+C：やさか納涼祭はどこでやってますか。
+Where is the Yasaka Summer Festival?
+--sfcode--
+{"ADV":"where","pos":"WRB"}
+{"VNA":"be","arg1":"festival","arg2":"where"}
+{"N":"yasaka-summer-festival"}
+undefined
+scode: [ { ADV: 'where', pos: 'WRB' },
+  { VNA: 'be', arg1: 'festival', arg2: 'where' },
+  { N: 'yasaka-summer-festival' } ]  rule: []
+
+A：はい。やさか納涼祭は〇〇で開催されています。 
+⇒ 
+{queryEDB: { 
+from: default_station 
+spot: {name: ‘yasaka-noryosai’, location: ‘what’}}} 
+
+
+E：ログ解析を開始してください。 
+A：はい。お客様から「一番近いトレイはどこ。」という問い合わせがあり、中央改札
+口横トイレを案内しました。 
+E：そのトイレは現在工事中で使用できません。
+The toilet is under construction and cannot be used.
+--sfcode--
+{"N":"toilet"}
+{"VNA":"be","arg1":"toilet","arg2":"under"}
+{"P":"under","pos":"IN"}
+{"N":"construction"}
+{"CONJ":"and","pos":"CC"}
+{"auxV":"can"}
+{"ADV":"not","pos":"RB"}
+{"auxV":"be"}
+{"VNP":"use","arg2":"toilet"}
+undefined
+scode: [ { N: 'toilet' },
+  { VNA: 'be', arg1: 'toilet', arg2: 'under' },
+  { P: 'under', pos: 'IN' },
+  { N: 'construction' },
+  { CONJ: 'and', pos: 'CC' },
+  { auxV: 'can' },
+  { ADV: 'not', pos: 'RB' },
+  { auxV: 'be' },
+  { VNP: 'use', arg1: null, arg2: 'toilet' } ]  rule: []
+
+A：わかりました。中央改札口トイレを工事中に設定します。
+
+⇒トレイデータベースにあらかじめ、使用可／不可の欄があり、「工事中」か
+ら推論して「不可」を記入。
+
+【FAQチャットボット画面４】 
+
+
+C：一番近いトレイを教えてください。
+Please tell me the nearest restroom.
+--sfcode--
+{"auxV":"please"}
+{"VNA":"tell","arg2":"me"}
+{"N":"me"}
+{}
+{"ADJ":"nearest","pos":"JJS"}
+{"N":"restroom"}
+undefined
+scode: [ { auxV: 'please' },
+  { VNA: 'tell', arg1: null, arg2: 'me' },
+  { N: 'me' },
+  { N: undefined },
+  { ADJ: 'nearest', pos: 'JJS' },
+  { N: 'restroom' } ]  rule: []
+
+A：あいにくと一番近いトイレは工事中のため、別のトイレをご案内させていただきま
+す。 
+
+
+⇒(情報解析部) 
+{querySDB: 
+
+
+{station: default_station, 
+place: {name: ‘rest-room’, location:’nearest’}}} 
+
+⇒(統合部)
+
+トイレデータベースを引いて、工事中トイレを迂回した情報を発行。
+【案内表示画面】
+

@@ -1,0 +1,27 @@
+module.exports = {make: function (){return( 
+[
+{"id":"1","word":"kintetsu-railway-central-entrance"},
+{"id":"2","word":"shinkansen-hachijo-east-entrance"},
+{"id":"3","word":"kintetsurailwaycentralentrance"},
+{"id":"4","word":"shinkansenhachijoeastentrance"},
+{"id":"5","word":"shinkansen-hachijo-entrance"},
+{"id":"6","word":"shinkansen-central-transfer"},
+{"id":"7","word":"JR-underground-central-gate"},
+{"id":"8","word":"shinkansen-central-entrance"},
+{"id":"9","word":"shinkansencentralentrance"},
+{"id":"10","word":"shinkansenhachijoentrance"},
+{"id":"11","word":"shinkansencentraltransfer"},
+{"id":"12","word":"JR-underground-east-gate"},
+{"id":"13","word":"underground-central-gate"},
+{"id":"14","word":"undergroundcentralgate"},
+{"id":"15","word":"underground-east-gate"},
+{"id":"16","word":"undergroundeastgate"},
+{"id":"17","word":"JR-west-entrance"},
+{"id":"18","word":"karasumaguchi"},
+{"id":"19","word":"west-entrance"},
+{"id":"20","word":"westentrance"},
+{"id":"21","word":"hachijo-exit"},
+{"id":"22","word":"hachijoguchi"},
+{"id":"23","word":"chuoguchi"}
+]
+)}}

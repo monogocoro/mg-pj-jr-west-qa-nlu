@@ -1,0 +1,20 @@
+module.exports = {make: function (){return( 
+[
+{"id":"1","word":"kansai-airport-limousine-bus"},
+{"id":"2","word":"kanku-limousine-bus"},
+{"id":"3","word":"highway-bus-stop"},
+{"id":"4","word":"subway-station"},
+{"id":"5","word":"metro-station"},
+{"id":"6","word":"renta-a-car"},
+{"id":"7","word":"highway-bus"},
+{"id":"8","word":"shuttle-bus"},
+{"id":"9","word":"taxi-stand"},
+{"id":"10","word":"bus-stop"},
+{"id":"11","word":"city-bus"},
+{"id":"12","word":"subway"},
+{"id":"13","word":"metro"},
+{"id":"14","word":"taxi"},
+{"id":"15","word":"tube"},
+{"id":"16","word":"bus"}
+]
+)}}
