@@ -180,6 +180,7 @@ var noEmpty = true;
 
 var args; // for controlling generateJcode();
 
+var chat; // for chat mode flag
 function interpreter(language, mode_flag, line0) {
 
     // all reset for global variables in this code
@@ -207,15 +208,22 @@ function interpreter(language, mode_flag, line0) {
     //    language: 'japanese' | 'english'
     //    mode_flag: 'none'（通常) | 'select'（選択） | 'command'（音声コマンド）
     //var line = voice_correct(line0); // 音声入力からテキスト変換の誤りを訂正
-    var line;
+    var line = line0;
+    chat = false;
+    //line = '{"chat_in": "ログ解析開始。"}';
+    if (line[0] === '{'){
+	chat = true;
+        line = JSON.parse(line).chat_in;
+    }
+
     if (mode_flag == "keyboard" && language == "ja"){ //ひらがな->漢字
-	//console.log("かな変換:", line0);
-	line = e2j_kanareplace(line0);
+	//console.log("かな変換:", line);
+	line = e2j_kanareplace(line);
     } else if (language == "en"){ //英語：各単語の先頭を大文字化。
-	line = capitalize(line0);
+	line = capitalize(line);
     } else {
-	//console.log("通常:", line0);
-	line = line0;
+	//console.log("通常:", line);
+	line = line;
     }
     console.log(line);
 
@@ -246,9 +254,15 @@ function interpreter(language, mode_flag, line0) {
     generateScode();
 
     // 最終query生成
-    var jcode = generateJcode();
-    console.log(jcode);
-    return jcode;
+    if (chat == true){
+	var chatcode = generateChatCode();
+	console.log(chatcode);
+	return chatcode;
+    } else {
+	var jcode = generateJcode();
+	console.log(jcode);
+	return jcode;
+    }
 }
 
 //
@@ -1548,6 +1562,14 @@ function deepCopy(obj) {
         }
     }
     return copy;
+}
+
+function generateChatCode(){
+    var confirmed = "はい。";
+    var answer = "お客様から" + "「UnionPayが使えない。」" + "という問い合わせがあり、答えられませんでした。";
+    var reply = confirmed+answer;
+    var chatcode = JSON.stringify({chat_out: {chat_reply:{replyJDB: reply}, chat_edit: {}}});
+    return chatcode;
 }
 
 // ------------------------------------------------------
