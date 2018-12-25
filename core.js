@@ -67,14 +67,7 @@ function interpreter(language, mode_flag, line0) {
     //    mode_flag: 'none'（通常) | 'select'（選択） | 'command'（音声コマンド）
     //var line = voice_correct(line0); // 音声入力からテキスト変換の誤りを訂正
     var line = line0;
-    //chat = false;
-    chat = true;  //強制chatモード。テスト用。
-    //1. '{"chat_in": "ログ解析を開始してください。"}';
-    //1-2. '{"chat_in": "UnionPayはクレジットカードです。"} ';
-    //1-3. '{"chat_in": "セブン銀行で使えます。"}';
-    //1-4. '{"chat_in": "よろしくお願いします。"}';
-    //2. '{"chat_in": "ログ解析を開始してください。"}';
-    line = '{"chat_in": "ログ解析を開始してください。"}';
+    chat = false;
     if (line[0] === '{'){
 	chat = true;
         line = JSON.parse(line).chat_in;
@@ -1522,7 +1515,7 @@ E:ログ解析を開始してください。
 A:はい。お客様から「コインロッカーの場所。」という問い合わせがあり、答えること
 はできたのですが、「大きなサイズのカバンが入るコインロッカーを知りたい。」には答
 えることが出来ませんでした。 
-E：大きなサイズのコインロッカーは〇〇にあります。（注：〇〇には実際の名称を使
+E：大きなサイズのコインロッカーは地下中央口横にあります。（注：〇〇には実際の名称を使
 用）
 The large size coin lockers are next to the central ticket gate.
 --sfcode--
@@ -1570,21 +1563,16 @@ input: {chat_in: "よろしくお願いします。"}
 
 var intent;
 var context;
+var reference;
 var dbedit;
+
 function generateChatCode(){
-    //1. "start('log-analysis')";
-    //1-2. "is_a('unionpay', 'creadit-card')";
-    //1-3. "can_use_at('unionpay', 'seven-bank')";
+
     var chat_content = contentAnalysis(scode); 
-    // intent set_in contentAnalysis(scode);
     context = chat_content;
     console.log("chat_content:", chat_content);
 
-    //1. "はい。";
-    //1-2. "わかりました。";
     var confirmed = generateConfirm(intent, context);
-    //1. "お客様から" + "「UnionPayが使えない。」" + "という問い合わせがあり、答えられませんでした。"
-    //1-2. ""
     var answer = eval(chat_content);
     var reply = confirmed+answer;
     var chatcode = JSON.stringify({chat_out: {chat_reply:{replyJDB: reply}, chat_edit: dbedit}});
@@ -1592,50 +1580,60 @@ function generateChatCode(){
 }
 
 function contentAnalysis(code){
-    var key = getkey(code[0]);
-    var value = getvalue(code[0]);
-    //console.log("key:",key, " value:", value);
-    if (key == "N" && code.length == 1){
-	var pred = predicateHead(code, 1);
-    } else if (key == "N" && code.length == 3){ //A is B.
-	var pred = predicateHead(code, 2);
-    } else if (code[1].auxV == "can" && code[2].VNA == "use" && code[3].N == "it"){ //you can use it at ...
-	var pred = predicateHead(code, 3);
-    } else if (code[0].VNA = "thank" && code[1].N == "you"){ //thank you
-	var pred = predicateHead(code, 4);
-    }
-    return pred; 
-}
 
-function predicateHead(code, index){
-    var pred
-    switch(index){
-    case 1:
-	//N: "start-log-analysis"
-	//pred: "start('log-analysis')"
-	var tokens = (code[0].N).split("-");
-	intent = tokens[0];
-	var s = tokens[1];
-	for (var i = 2; i < tokens.length; i++){
-	    s = s + '-' + tokens[i];
-	}
-	pred = tokens[0] + "('" + s + "')";
+    var pred = "false";
+    var residuals;
+    residuals = partialMatch(["start-log-analysis"],code);
+    if (residuals != false){
+	intent = "start";
+	pred = "start('log-analysis')";
 	return pred;
-    case 2:
-	// A is B => is_a('A', 'B')
-	pred = "is_a('" + code[0].N +"','" + code[2].N + "')";
-	intent = "is_a";
-	return pred;
-    case 3:
-	pred = "can_use_at('unionpay', 'seven-bank')";
-	intent = "can_use_at";
-	return pred;
-    case 4:
-	pred = "thank_you()";
-	intent = "thank_you";
-	return pred;
-    defaul: return null;	
     }
+
+    residuals = partialMatch(["be","located","next","to"],code);
+    if (residuals != false){
+	intent = "located_next_to";
+	pred = "located_next_to('"+rc(residuals,0)+"','"+rc(residuals,1)+"')";
+	return pred;
+    }
+
+    residuals = partialMatch(["can", "use", "it", "at"], code);
+    if (residuals != false){
+	intent = "can_use_at";
+	pred = "can_use_at('"+reference+"','"+rc(residuals,1)+"')";
+	return pred;
+    }
+
+    residuals = partialMatch(["register", "database"], code);
+    if (residuals != false){
+	intent = "registert";
+	pred = "register('database')"; //本来であれば「どの」データベースか指定する必要あり。
+	return pred;
+    }
+
+    residuals = partialMatch(["under", "construction"], code);
+    if (residuals != false){
+	intent = "under_construction";
+	pred = "under_construction('toilet')"; //どのトイレであるか指定する必要あり。
+	return pred;
+    }
+
+    residuals = partialMatch(["be"],code); // A is B
+    if (residuals != false && residuals.length == 2){
+	intent = "is_a";
+	pred = "is_a('"+rc(residuals,0)+"','"+rc(residuals,1)+"')";
+	reference = rc(residuals, 0);
+	return pred;
+    }
+
+    residuals = partialMatch(["thank", "you"], code);
+    if (residuals != false){
+	intent = "thank_you";
+	pred = "thank_you()";
+	return pred;
+    }
+
+    return pred;
 }
 
 function generateConfirm(intent, context){
@@ -1643,21 +1641,22 @@ function generateConfirm(intent, context){
     switch(intent){
     case 'start': ans = "はい。"; break;
     case 'is_a': ans = "わかりました。"; break;
-    case 'can_ust_at': ans = ""; break;
+    case 'can_use_at': ans = ""; break;
     case 'thank_you': ans = "どういたしまして。"; break;
     default: null;
     }
     return ans;
 }
 
-var log_session = 1;
+var log_session = 0;
 function start(command){
     console.log("start:", command);
     switch(command){
     case 'log-analysis':
-	var log = JSON.parse(get_session_summary(2)); //log_session
+	log_session = log_session + 1;
+	var log = JSON.parse(get_session_summary(log_session));
 	dbedit = {};
-	console.log(log);
+	//console.log(log);
 	break;
     default:
 	null;
@@ -1668,15 +1667,16 @@ function start(command){
     case 1:
 	r = "お客様から" + "「UnionPayが使えない。」" + "という問い合わせがあり、答えられませんでした。";
 	break;
+    case 2:
+	r = "お客様から" + "「コインロッカーの場所。」" + "という問い合わせがあり、答えることはできたのですが、"+"「大きなサイズのカバンが入るコインロッカーを知りたい。」" + "には答えることが出来ませんでした。";
+	break;
+    case 3:
+	r = "お客様から" + "「東寺の紅葉ライトアップに行きたい。」" + "という問い合わせがあり、答えられませんでした。";
+	break;
+    case 4:
+	r = "お客様から" + "「一番近いトレイはどこ。」" + "という問い合わせがあり、中央改札口横トイレを案内しました。";
+	break;
     }
-    return r;
-}
-
-function is_a(A, B){
-    dbedit = {};
-    dbedit['class'] = A;
-    dbedit['add_record'] = B;
-    var r = "";
     return r;
 }
 
@@ -1690,9 +1690,38 @@ function can_use_at(obj, place){
     return r;
 }
 
+function located_next_to(obj, place){
+    dbedit = {};
+    var r = "私はサイズに関する情報を持っていません。情報の追加をお願いします。";
+    return r;
+}
+
+function register(db){
+    dbedit = {};
+    var r = "よろしくお願いします。";
+    return r;
+}
+
+function under_construction(obj){
+    dbedit = {};
+    dbedit['class'] = 'rest-room';
+    dbedit['record'] = '1'; //中央改札口横トイレID
+    dbedit['change_status'] = 'under_construction';
+    
+    var r = "わかりました。中央改札口横トイレを工事中に設定します。";
+    return r;
+}
+
+function is_a(A, B){
+    dbedit = {};
+    dbedit['class'] = A;
+    dbedit['add_record'] = B;
+    var r = "";
+    return r;
+}
+
 function thank_you(){
     dbedit = {};
-    log_session = log_session + 1;
     return "";
 }
 
@@ -1704,6 +1733,82 @@ function get_session_summary(nth){
     return res.getBody('utf8');
 }
 
+// rule-based partial matching and gain residuals
+function codePartialMatch(code, rule0){
+
+    var rule = JSON.parse(rule0);
+    var result = {};
+    var token_list = [];
+    var i = 0;
+    while (i < code.length){
+	if (getvalue(code[i]) == rule[0]){
+	    token_list.push([code[i]]);
+	    rule.shift();
+	} else {
+	    token_list.push(code[i]);
+	}
+	i++;
+    }
+    if (JSON.stringify(rule) == "[]"){
+	result['matched'] = true;
+	result['residuals'] = extractObject(token_list);	
+    }
+    else{
+	result['matched'] = false;
+	result['residuals'] = [];
+    }
+    return result;
+}
+
+function extractObject(list){
+    
+    var extract = [];
+    var i = 0;
+    while(i < list.length){
+	while(i < list.length && isArray(list[i])) i++;
+	var a = []; var start = i;
+	while(i < list.length && !(isArray(list[i]))){
+	    a.push(list[i]);
+	    i++;
+	};
+	var obj = {}; obj['start'] = start; obj['content'] = a;
+	extract.push(obj);
+    };
+    return extract;
+}
+
+function rc(res, i){
+    // residual_content
+    var c = res[i].content;
+    var content = getvalue(c[0]);
+    var i = 1;
+    while (i < c.length){
+	content = content + '_' + getvalue(c[i]);
+	i++;
+    }
+    return content;
+}
+
+function partialMatch(rule, code){
+    var result = codePartialMatch(code,JSON.stringify(rule));
+    if (result.matched) return result.residuals;
+    else return false;
+}
+
+/*
+function applyRule(code){
+    
+    var i = 0;
+    var result;
+    while(i < rules.length){
+	// JSON.stringify for protecting the destruction of rules
+	result = codePartialMatch(code,JSON.stringify(rules[i])); 
+	if (result.matched) return result;
+	i++;
+    }
+    return {};
+}
+*/
 
 // ------------------------------------------------------
 // 入力テスト

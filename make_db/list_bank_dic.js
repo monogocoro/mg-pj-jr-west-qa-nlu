@@ -7,6 +7,7 @@ module.exports = {make: function (){return(
 {"id":"5","word":"seven-bank"},
 {"id":"6","word":"sevenbank"},
 {"id":"7","word":"aeon-bank"},
-{"id":"8","word":"smbc"}
+{"id":"8","word":"unionpay"},
+{"id":"9","word":"smbc"}
 ]
 )}}

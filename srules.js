@@ -289,6 +289,12 @@ I like this one.
 
 module.exports = {make: function (){return( [
 
+    { rule: ["unionpay"],
+      ptn: {querySDB: {station: default_station, place:{name: 'unionpay'}}}},
+
+    { rule: ["look", "for", "large", "size-coin-locker"],
+      ptn: {querySDB: {station: default_station, place:{name: 'coin-locker', size: 'large'}}}},
+    
     { rule: ["yoshinaga-kameya"],
       ptn: {queryTDB: {from: default_station, to_place: 'shijokawaramachi'}}},
 
