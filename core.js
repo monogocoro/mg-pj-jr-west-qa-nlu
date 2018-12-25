@@ -49,6 +49,9 @@ function interpreter(language, mode_flag, line0){
     tokenIdList = [];
     tokenList = [];
     scode = [];
+
+    intenet = "";
+    context = "";
     // --->
 
     function ucfirst(s){
