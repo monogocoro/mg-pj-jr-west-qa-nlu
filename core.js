@@ -1705,7 +1705,7 @@ function register(db){
 function under_construction(obj){
     dbedit = {};
     dbedit['class'] = 'rest-room';
-    dbedit['record'] = '1'; //中央改札口横トイレID
+    dbedit['record'] = '5c219604073ef32fc70a2d5f'; //中央改札口横トイレID
     dbedit['change_status'] = 'under_construction';
     
     var r = "わかりました。中央改札口横トイレを工事中に設定します。";
