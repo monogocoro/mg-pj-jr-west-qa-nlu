@@ -50,8 +50,6 @@ function interpreter(language, mode_flag, line0){
     tokenList = [];
     scode = [];
 
-    intenet = "";
-    context = "";
     // --->
 
     function ucfirst(s){
@@ -1655,10 +1653,13 @@ function generateConfirm(intent, context){
 }
 
 function start(command){
+    var log;
+    var count;
+    var qas;
     console.log("start:", command);
     switch(command){
     case 'log-analysis':
-	var log = JSON.parse(get_session_summary(session_no));
+	log = JSON.parse(get_session_summary(session_no));
 	dbedit = {};
 	//console.log(log);
 	break;
@@ -1666,20 +1667,17 @@ function start(command){
 	null;
     }
     // ログ解析
+    qas = log.qas; 
+    
     var r;
-    switch(session_no){
-    case 1:
-	r = "お客様から" + "「UnionPayが使えない。」" + "という問い合わせがあり、答えられませんでした。";
-	break;
-    case 2:
-	r = "お客様から" + "「コインロッカーの場所。」" + "という問い合わせがあり、答えることはできたのですが、"+"「大きなサイズのカバンが入るコインロッカーを知りたい。」" + "には答えることが出来ませんでした。";
-	break;
-    case 3:
-	r = "お客様から" + "「東寺の紅葉ライトアップに行きたい。」" + "という問い合わせがあり、答えられませんでした。";
-	break;
-    case 4:
-	r = "お客様から" + "「一番近いトレイはどこ。」" + "という問い合わせがあり、中央改札口横トイレを案内しました。";
-	break;
+    if (qas.length == 1 && qas[0].kind_no == '2'){
+	r = "お客様から" + "「" + qas[0].q + "」" + "という問い合わせがあり、答えられませんでした。";
+    } else if (qas.length >= 2 && qas[1].kind_no == '1' && qas[0].kind_no == '3'){
+	r = "お客様から" + "「" + qas[1].q +  "」" + "という問い合わせがあり、答えることはできたのですが、"+"「" + qas[0].q + "」" + "には答えることが出来ませんでした。";
+    } else if (qas.length > 3 ){
+	r = "お客様から" + "「" + qas[0].q + "」" + "という問い合わせがあり、答えられませんでした。";
+    } else if (qas.length == 1){
+	r = "お客様から" + "「" + qas[0].q + "」" + "という問い合わせがあり、" + "「" + qas[0].a + "」" + "を案内しました。";
     }
     return r;
 }
