@@ -39,7 +39,9 @@ var noEmpty = true;
 var args; // for controlling generateJcode();
 
 var chat; // for chat mode flag
-function interpreter(language, mode_flag, line0) {
+
+var session_no;
+function interpreter(language, mode_flag, line0){
 
     // all reset for global variables in this code
     nodemarks = [];
@@ -70,6 +72,7 @@ function interpreter(language, mode_flag, line0) {
     chat = false;
     if (line[0] === '{'){
 	chat = true;
+	session_no = JSON.parse(line).session_no;
         line = JSON.parse(line).chat_in;
     }
 
@@ -1648,13 +1651,11 @@ function generateConfirm(intent, context){
     return ans;
 }
 
-var log_session = 0;
 function start(command){
     console.log("start:", command);
     switch(command){
     case 'log-analysis':
-	log_session = log_session + 1;
-	var log = JSON.parse(get_session_summary(log_session));
+	var log = JSON.parse(get_session_summary(session_no));
 	dbedit = {};
 	//console.log(log);
 	break;
@@ -1663,7 +1664,7 @@ function start(command){
     }
     // ログ解析
     var r;
-    switch(log_session){
+    switch(session_no){
     case 1:
 	r = "お客様から" + "「UnionPayが使えない。」" + "という問い合わせがあり、答えられませんでした。";
 	break;
@@ -1675,7 +1676,6 @@ function start(command){
 	break;
     case 4:
 	r = "お客様から" + "「一番近いトレイはどこ。」" + "という問い合わせがあり、中央改札口横トイレを案内しました。";
-	log_session = 0; //demo scenario reset
 	break;
     }
     return r;
