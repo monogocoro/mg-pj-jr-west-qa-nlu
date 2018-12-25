@@ -1675,6 +1675,7 @@ function start(command){
 	break;
     case 4:
 	r = "お客様から" + "「一番近いトレイはどこ。」" + "という問い合わせがあり、中央改札口横トイレを案内しました。";
+	log_session = 0; //demo scenario reset
 	break;
     }
     return r;
