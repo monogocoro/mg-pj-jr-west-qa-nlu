@@ -1601,6 +1601,13 @@ function contentAnalysis(code){
 	return pred;
     }
 
+    residuals = partialMatch(["be","next","to"],code);
+    if (residuals != false){
+	intent = "located_next_to";
+	pred = "located_next_to('"+rc(residuals,0)+"','"+rc(residuals,1)+"')";
+	return pred;
+    }
+
     residuals = partialMatch(["can", "use", "it", "at"], code);
     if (residuals != false){
 	intent = "can_use_at";
