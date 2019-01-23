@@ -61,6 +61,9 @@ function isFACILITY(obj){
     return typeCheck(facilityobjects, obj);
 }
 
+var obj = {}; obj["val"]="toilet";
+console.log("isFACILITY:", isFACILITY(obj));
+
 function isGATE(obj){
     return typeCheck(gateobjects, obj);
 }
@@ -288,6 +291,24 @@ I like this one.
 */
 
 module.exports = {make: function (){return( [
+
+    { rule: [isFACILITY, "in", "kotochika"],
+      ptn: {querySDB: {station: default_station, place:{name: '$1', in: "kotochika"}}}},
+
+    { rule: [isFACILITY, "inside", "ticket", "gate"],
+      ptn: {querySDB1: {station: default_station, place: {name: '$1', location: 'ingate'}}} },
+
+     // オムツ
+    { rule: ["change", "diaper"],
+      ptn: {querySDB: {station: default_station, place:{name: 'diaper'}}}},
+
+    //　トイレ
+    { rule: ["toilet", "available", "for", "man"],
+      ptn: {querySDB: {station: default_station, place:{name: 'toilet', status: 'open', usedfor: 'man'}}}},
+
+    { rule: ["toilet", "available", "for", "woman"],
+      ptn: {querySDB: {station: default_station, place:{name: 'toilet', status: 'open', usedfor: 'woman'}}}},
+
 
     { rule: ["unionpay"],
       ptn: {querySDB: {station: default_station, place:{name: 'unionpay'}}}},
@@ -840,6 +861,9 @@ module.exports = {make: function (){return( [
     { rule: ["change","money"],
       ptn: {querySDB: {station: default_station,  place: {name: 'money-change'}}} },
 
+    { rule: ["exchange","money"],
+      ptn: {querySDB: {station: default_station,  place: {name: 'money-change'}}} },
+
     { rule: ["money","change"],
       ptn: {querySDB: {station: default_station,  place: {name: 'money-change'}}} },
 
@@ -1086,6 +1110,9 @@ module.exports = {make: function (){return( [
     
     { rule: [isFACILITY, "inside", "ticket-gate"],
       ptn: {querySDB: {station: default_station, place: {name: '$1', location: 'ingate'}}} },
+
+    { rule: [isFACILITY, "inside", "ticket", "gate"],
+      ptn: {querySDB1: {station: default_station, place: {name: '$1', location: 'ingate'}}} },
 
     { rule: [isFACILITY, "outside", "ticket-gate"],
       ptn: {querySDB: {station: default_station, place: {name: '$1', location: 'outgate' }}} },

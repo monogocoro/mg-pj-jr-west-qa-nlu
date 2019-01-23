@@ -46,7 +46,7 @@ int main(int argc, char *argv[]){
   sprintf(command, "cat %s.csv >> ./tmp", argv[1]); system(command);
   
   // 4.
-  sprintf(command, "/Users/skybird/.nodebrew/current/bin/csvtojson ./tmp > ./tmp2");
+  sprintf(command, "~/.nodebrew/current/bin/csvtojson ./tmp > ./tmp2");
   system(command);
   sprintf(command, "echo \"module.exports = {make: function (){return( \" > %s.js", argv[1]);
   system(command);

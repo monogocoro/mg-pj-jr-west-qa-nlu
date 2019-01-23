@@ -11,6 +11,7 @@ module.exports = {make: function (){return(
 {"id":"9","wrong":"Kissuenbasho","teisei":"Kitsuenbasho"},
 {"id":"10","wrong":"Zushinin","teisei":"Zuishinin"},
 {"id":"11","wrong":"Gogoichihai","teisei":"GOGOICHIHORAI"},
-{"id":"12","wrong":"Where's","teisei":"Where Is"}
+{"id":"12","wrong":"Where's","teisei":"Where Is"},
+{"id":"13","wrong":"Kotocihka","teisei":"Kotochika"}
 ]
 )}}

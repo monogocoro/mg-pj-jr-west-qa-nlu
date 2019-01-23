@@ -1290,6 +1290,8 @@ function generateJcode() {
     //finaling
     //console.log("jcode:", jcode);
     jcode = arg_replace(jcode);
+    console.log("jcode:", jcode);
+    if (JSON.parse(jcode).querySDB == undefined) return notfound;
     var placename = JSON.parse(jcode).querySDB.place.name;
     if (!existDBQ(jword(placename))) return notfound;
     //console.log("jcode, arg replaced:", jcode)
