@@ -27,6 +27,7 @@ const Realm = require('realm');
 var debug = false;
 var debugC = false;
 var print = false;
+var eprint = true;
 var sfprint = true;
 
 
@@ -127,6 +128,27 @@ function interpreter(language, mode_flag, line0){
 }
 
 //
+// Neo4j グラフデータベース
+//
+function neo4jAPI (token){
+    var params_text = token.replace(/\s+/g, "");
+    var neo4jURL="http://ec2-54-65-31-201.ap-northeast-1.compute.amazonaws.com:3000/things/";
+    var url = neo4jURL + encodeURIComponent(params_text);
+    var request = require('sync-request');
+    var res = request('GET', url);
+    return JSON.parse(res.getBody('utf8'));
+}
+//console.log(neo4jAPI("本屋"));
+//console.log(neo4jAPI("お手洗い"));
+
+function existDBQ (token){
+    return (neo4jAPI(token).data !== null);
+}
+//console.log(existDBQ("本屋"));
+//console.log(existDBQ("お手洗い"));
+
+
+//
 // データベースを利用した変換関数
 // 
 function replace_with_db(s, dbobjs, key1, key2, prefix){
@@ -201,6 +223,7 @@ function j2e_replace(s){
     return replace_with_db(s, j2edbdic, "jword", "eword", "");
 }
 
+
 //
 // e2j_kanareplace: キーボード入力時、ひらがなを日本語に変換
 //
@@ -224,6 +247,17 @@ function e2j_replace(s){
 }
 
 //console.log(e2j_replace("where is taxi_stand?"));
+
+//
+// 英単語から日本語を得る
+//
+function jword(eword){
+    var r = e2jdbdic.filtered('eword = '+ '"' + eword + '"');
+    if (JSON.stringify(r) == "{}") return "不明";
+    else return(r[0].jword);
+}
+//console.log(jword("bookstore"));
+//console.log(jword("restroom"));
 
 //
 // 複文を単文に変換
@@ -572,7 +606,7 @@ function generateCode(line) {
         code = {};
     }
     for (var i = 0; i < stack.length; i++) {
-        if (print) console.log(JSON.stringify(stack[i]));
+        if (eprint) console.log(JSON.stringify(stack[i]));
     }
     ecode = stack;
     tokenIdList = [];
@@ -1227,6 +1261,7 @@ const srules = require(__dirname+'/srules.js');
 const scoderules = srules.make();
 function generateJcode() {
     
+    var notfound = JSON.stringify({ queryJDB: {fail: ''}});
     if (print) console.log("--jcode---");
     // interprete scode then generate jcode
 
@@ -1255,6 +1290,8 @@ function generateJcode() {
     //finaling
     //console.log("jcode:", jcode);
     jcode = arg_replace(jcode);
+    var placename = JSON.parse(jcode).querySDB.place.name;
+    if (!existDBQ(jword(placename))) return notfound;
     //console.log("jcode, arg replaced:", jcode)
     jcode = e2j(jcode);
     scode = []; //global variable
