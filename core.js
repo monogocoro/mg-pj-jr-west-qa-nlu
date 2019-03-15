@@ -155,7 +155,8 @@ function interpreter(language, mode_flag, line0){
     generateCode(line); // lineを引数にとっているが現在は未使用。
 
     // gremlin code 生成
-    return generateGcode();
+    if (chat == false) return generateGcode();
+    else return generateChatcode();
 }
 
 //
@@ -1039,19 +1040,17 @@ function gcode(escode){
 	    gtmp["gdb"] = genPattern3(genVariable(0), pickNoun(s, escode));
 	}
 	//{ stype: 'where', v: [ 'can', 'go' ], s: [ 'we' ], obj2: [], unprocessed: { phrase: [ 'cherry', 'blossom', 'viewing' ] } }
+	else if (JSON.stringify[obj2] == "[]" ){
+	    gtmp["gdb"] = genPattern2(genVariable(0), pickVerb(v, escode), pickNoun(ecode.unprocessed.phrase, escode));
+	}
 	//{ stype: 'where', v: [ 'do', 'sell' ], s: [ 'they' ], obj2: [ 'soba' ] };
+	else if (JSON.stringify[obj2] != "[]" ){
+	    gtmp["gdb"] = genPattern2(genVariable(0), pickVerb(v, escode), pickNoun(obj2, escode));
+	}
 	//{ stype: 'where', v: [ 'can', 'smoke' ], s: [ 'i' ] };
 	else{
-	    gtmp["gdb"] = genPattern2(genVariable(0), pickVerb(v, escode), pickNoun(s, escode));
+	    gtmp["gdb"] = genPattern0(genVariable(0), pickVerb(v, escode));
 	}
-	/*
-	var s = escode.s; v = escode.v; var obj2 = escode.obj2; var target;
-	if (v == undefined && s[0] == 'be') target = obj2;
-	else if (v[0] == 'be') target = s;
-	else if (obj2.length != 0) target = obj2;
-	else target = escode.unprocessed.phrase;
-	gtmp["gdb"] = genPattern3(genVariable(0), pickNoun(target, escode));
-	*/
 	break;
     case 'imperative': break;
     case 'affirmative':
@@ -1081,6 +1080,7 @@ function pickVerb(verb, escode){
     switch(verb[0]){
     case 'want_to': return verb[1];
     case 'can': return verb[1];
+    case 'do': return verb[1];
     default: return verb;
     }
 }
@@ -1096,14 +1096,14 @@ function addquote(name){
 }
 
 function genPattern0(v1, el1){ //関係対象を知りたい
-    var s = "g.V().match(__.as(V1).in(EL1))";
+    var s = "g.V().match(__.as(V1).in(EL1)).select(V1)";
     s = s.replace(/V1/g, addquote(v1));
     s = s.replace(/EL1/g, addquote(el1));
     return s;
 }
 
 function genPattern1(v1, vl1){ //対象VL1そのものの情報を知りたい
-    var s = "g.V().match(__.as(V1).has(label, of(VL1)))";
+    var s = "g.V().match(__.as(V1).has(label, of(VL1))).select(V1)";
     s = s.replace(/V1/g, addquote(v1));
     s = s.replace(/VL1/g, addquote(vl1));
     return s;
@@ -1118,7 +1118,7 @@ function genPattern2(v1, el1, vl1){ //具体的な対象VL1へ行く手段を知
 }
 
 function genPattern3(v1, vl1){ //対象VL1が一般名詞,固有名詞両方を持つ場合
-    var s = "g.V().match(__.as(V1).out('instanceOf').has(label, of(VL1)).).select(V1)";
+    var s = "g.V().match(__.as(V1).out('instanceOf').has(label, of(VL1))).select(V1)";
     s = s.replace(/V1/g, addquote(v1));
     s = s.replace(/VL1/g, addquote(vl1));
     return s;
@@ -1134,6 +1134,10 @@ function genPattern4(v1, v2, el1, vl1, vl2){
     return s;
 }
 
+function generateChatcode(){
+    var chatout = chat();
+    return chatout;
+}
 
 //console.log(gremlinAPI("g.V().match(__.as('x').out('change').has(label,of('オムツ')).select('x'))"));
 
