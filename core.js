@@ -1229,7 +1229,7 @@ function affirmativeOrder(escode){
 
     //{ s: [ 'the', 'smoking', 'area' ], v: [ 'be' ], obj2: [],  where: { s: [ 'you' ], v: [ 'can', 'smoke' ] } }
     if (v == 'be' && obj2 == undefined && escode.where != undefined){
-	var otmp = {}; otmp['s'] = s; otmp['def'] = pickVerb(escode.where.v,escode);
+	var otmp = {}; otmp['s'] = s; otmp['v'] = pickVerb(escode.where.v,escode);
 	o["status"] =otmp; gcode["chat_out"] = o;
 	return gcode;
     }
