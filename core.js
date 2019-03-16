@@ -1101,15 +1101,18 @@ function emptyArray(a){
 }
 
 function pickNoun(noun, escode){
+    console.log("noun-start:", noun);
     if (noun == undefined) return undefined;
     var token; var i;
+    console.log("noun[0]:", noun[0]);
     if (noun[0] == 'the'){ token = noun[1]; i = 2 }
-    if (noun[0] == 'be') {token = noun[1]; i = 2 } // for unprocessed 'be'
+    else if (noun[0] == 'be') { token = noun[1]; i = 2 } // for unprocessed 'be'
     else { token = noun[0]; i = 1 }
     while (i < noun.length){
 	if (noun[i] == "'s") {i++; continue;} //skip
 	token = token + '-' + noun[i]; i++
     }
+    console.log("noun-end:", token);
     return token;
 }
 
@@ -1226,7 +1229,7 @@ function affirmativeOrder(escode){
 
     //{ s: [ 'the', 'smoking', 'area' ], v: [ 'be' ], obj2: [],  where: { s: [ 'you' ], v: [ 'can', 'smoke' ] } }
     if (v == 'be' && obj2 == undefined && escode.where != undefined){
-	var otmp = {}; otmp['s'] = s; otmp['changed'] = pickVerb(escode.where.v,escode);
+	var otmp = {}; otmp['s'] = s; otmp['def'] = pickVerb(escode.where.v,escode);
 	o["status"] =otmp; gcode["chat_out"] = o;
 	return gcode;
     }
