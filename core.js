@@ -37,6 +37,10 @@ var noEmpty = true;
 
 var chat; // for chat mode flag
 
+// make it availableでavailableを未処理で残して場合。
+// 具体的にはunprocessedの中で設定し、pickVerbの中で使用する。
+var complement = null; 
+
 var session_no;
 
 var input = {}; //protocol stack for line, ecode, etc:
@@ -84,6 +88,7 @@ function interpreter(language, mode_flag, line0){
     tokens = [];
     tokenIdList = [];
     tokenList = [];
+    complement = null;
 
     input["line"] = [];
     input["j2e_replace"] = [];
@@ -332,6 +337,13 @@ function get_enju_json(text0, language) {
     }
     input["mirai_extend"].push(tokenSplit(mirai));
     input["mirai"].push(mirai);
+
+    //重要　
+    /*
+    たとえば動詞"was found"はenjuの原型では[be, find]となる。
+    文の正確な意味をつかみたい時は、'be-found'もしくはもっと踏み込んで'was-found'とすべき。
+    一方、辞書管理は煩雑になる。でも、本来はやるべき。
+    */
 
     //複文
     //車内で忘れ物をしたがどこに行けばいいか。
@@ -689,7 +701,7 @@ function generateGcode(){
 	console.log("gscode:", gtmp);
 	return gtmp;
     } else {
-	gtmp = chat1(escode);
+	gtmp = chatgen(escode);
 	console.log("gscode:", gtmp);
 	return gtmp;
     }
@@ -705,7 +717,7 @@ function generateEscode(){
     if (o.i != i){ //Please型の命令形
 	escode = o; escode['stype'] = 'imperative'; return escode;
     }
- 
+
     switch(ecode[i].base){
     case 'be': 
 	// be there
@@ -799,6 +811,14 @@ function imperative(ti){
     if (ecode[i].base != "please"){ return o };
     i++;
     o = scode(i,true);
+
+    if (o.i < ecode.length){ //scodeで積み残したもの
+	var rest = unprocessed(o.i);
+	o['unprocessed'] = rest.phrase;
+	o.i = rest.i;
+	complement = rest.phrase[0];
+    }
+
     return o;
 }
 
@@ -900,6 +920,9 @@ function phraseNoun(ti, targ){
 	    //N〜Nの間に名詞化した動詞が入る。
 	    phrase.push(ecode[i].base); 
 	    if (ecode[i].pred == 'noun_arg0') {
+		if (i+1 < ecode.length && ecode[i+1].base == "'s"){
+		    i++; phrase.push(ecode[i].base); 
+		}
 		i++; break;
 	    }
 	    i++;
@@ -1081,20 +1104,27 @@ function pickNoun(noun, escode){
     if (noun == undefined) return undefined;
     var token; var i;
     if (noun[0] == 'the'){ token = noun[1]; i = 2 }
+    if (noun[0] == 'be') {token = noun[1]; i = 2 } // for unprocessed 'be'
     else { token = noun[0]; i = 1 }
     while (i < noun.length){
+	if (noun[i] == "'s") {i++; continue;} //skip
 	token = token + '-' + noun[i]; i++
     }
     return token;
 }
 
-function pickVerb(verb, escode){
+function pickVerb(verb,escode){
     if (verb == undefined) return undefined;
     switch(verb[0]){
     case 'want_to': return verb[1];
-    case 'can': return verb[1];
+    case 'can': 
+	if (verb[1] == 'not') return 'not-'+verb[2];
+	else return verb[1];
     case 'do': return verb[1];
-    default: return verb;
+    case 'be': if (verb.length >= 2) return 'be'+"-"+verb[1]; // [be, gone]
+    default: 
+	if (complement == null) return verb[0];
+	else return verb[0]+"-"+complement;
     }
 }
 
@@ -1147,7 +1177,7 @@ function genPattern4(v1, v2, el1, vl1, vl2){
     return s;
 }
 
-function chat1(escode){
+function chatgen(escode){
     if(escode.stype == 'imperative'){
 	return(imperativeOrder(escode));
     }
@@ -1160,31 +1190,72 @@ function chat1(escode){
 }
 
 function imperativeOrder(escode){
+
     var v = pickVerb(escode.v, escode); 
     var obj1 = pickNoun(escode.obj1, escode);
     var obj2 = pickNoun(escode.obj2, escode);
     var of = pickNoun(escode.of, escode);
-
     var gcode = {}; var o = {};
+
     //{ v: [ 'give' ], obj1: 'me', obj2: [ 'list' ],  of: [ 'correct', 'answer' ] }
     //{ v: [ 'give' ], obj1: 'me', obj2: [ 'list' ],  of: [ 'incorrect', 'answer' ] }
     //{ v: [ 'give' ], obj1: 'me', obj2: [ 'list' ],  of: [ 'unanswered', 'question' ] }
     //{ v: [ 'cancel' ], obj2: [ 'the', 'number', '3', 'bus', 'stop' ] }
-    //{ v: [ 'make' ], obj2: [ 'the', 'number', '3', 'bus', 'stop' ] };
+    //{ v: [ 'make' ], obj2: [ 'the', 'number', '3', 'bus', 'stop' ], unprocessed: [ 'available' ] }
+    //   in pickVerb() v-> make-available
+
     if (v == 'give' && obj2 == 'list' && of != undefined){
-	o["list"] = of; gcode["chat_out"] = o;
-    } else {
-	o[v] = obj2; gcode["chat_out"] = o;
+	var otmp = {}; otmp['v'] = 'list'; otmp['obj'] = of;
+	o['order'] = otmp; gcode["chat_out"] = o;
+	return gcode;
     }
+    var otmp = {}; otmp['v'] = v; otmp['obj'] = obj2;
+    o['order'] = otmp; gcode["chat_out"] = o;
     return gcode;
+
 }
 
 function affirmativeOrder(escode){
-    //{ s: [ 'the', 'bus', 'stop' ], obj2: [],  for: [ 'okazaki', 'park' ],  unprocessed: { phrase: [ 'be', 'number', '3' ] } }
-    //{ s: [ 'the', 'number', '3', 'bus', 'stop' ],  v: [ 'be', 'go' ] }
+
+    var s = pickNoun(escode.s, escode);
+    var v = pickVerb(escode.v, escode); 
+    var obj1 = pickNoun(escode.obj1, escode);
+    var obj2 = pickNoun(escode.obj2, escode);
+    var nfor = pickNoun(escode.for, escode);
+    var gcode = {}; var o = {};
+
     //{ s: [ 'the', 'smoking', 'area' ], v: [ 'be' ], obj2: [],  where: { s: [ 'you' ], v: [ 'can', 'smoke' ] } }
+    if (v == 'be' && obj2 == undefined && escode.where != undefined){
+	var otmp = {}; otmp['s'] = s; otmp['changed'] = pickVerb(escode.where.v,escode);
+	o["status"] =otmp; gcode["chat_out"] = o;
+	return gcode;
+    }
+
+    //{ s: [ 'the', 'bus', 'stop' ], obj2: [],  for: [ 'okazaki', 'park' ],  unprocessed: { phrase: [ 'be', 'number', '3' ] } }
+    console.log("imperative:", escode);
+    if (nfor != undefined && escode.unprocessed != undefined){
+	var otmp = {}; otmp['s'] = s; otmp['for'] = nfor; otmp['def'] = pickNoun(escode.unprocessed.phrase, escode);
+	o["status"] =otmp; gcode["chat_out"] = o;
+	return gcode;
+    }
+
+    //{ s: [ 'mcdonald', '\'s' ], v: [ 'can', 'not', 'smoke', 'anymore' ] }
+    //{ s: [ 'the', 'number', '3', 'bus', 'stop' ],  v: [ 'be', 'go' ] }
+    if (v != 'be' && obj2 == undefined){
+	var otmp = {}; otmp['s'] = s; otmp['v'] = v; 
+	o["status"] =otmp; gcode["chat_out"] = o;
+	return gcode;
+    }
+
     //{ s: [ 'tetsuhaku' ], v: [ 'be' ], obj2: [ 'another', 'name' ], for: [ 'railway', 'museum' ] }
+    if (v == 'be' && obj2 == 'another-name'){
+	var otmp = {}; otmp['s'] = s; otmp['alias_of'] = nfor; 
+	o["status"] =otmp; gcode["chat_out"] = o;
+	return gcode;
+    }
+    return undefined;
 }
+
 
 //console.log(gremlinAPI("g.V().match(__.as('x').out('change').has(label,of('オムツ')).select('x'))"));
 
