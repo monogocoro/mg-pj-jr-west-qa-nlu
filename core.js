@@ -155,8 +155,7 @@ function interpreter(language, mode_flag, line0){
     generateCode(line); // lineを引数にとっているが現在は未使用。
 
     // gremlin code 生成
-    if (chat == false) return generateGcode();
-    else return generateChatcode();
+    return(generateGcode());
 }
 
 //
@@ -682,10 +681,18 @@ function generateCode(line) {
 function generateGcode(){
 
     var escode = generateEscode();
+    var gtmp;
     console.log("escode:", escode);
-    var gtmp = gcode(escode);
-    console.log("gscode:", gtmp);
-    return gtmp;
+
+    if (chat == false){
+	gtmp = gcode(escode);	
+	console.log("gscode:", gtmp);
+	return gtmp;
+    } else {
+	gtmp = chat1(escode);
+	console.log("gscode:", gtmp);
+	return gtmp;
+    }
 }
 
 function generateEscode(){
@@ -1040,11 +1047,11 @@ function gcode(escode){
 	    gtmp["gdb"] = genPattern3(genVariable(0), pickNoun(s, escode));
 	}
 	//{ stype: 'where', v: [ 'can', 'go' ], s: [ 'we' ], obj2: [], unprocessed: { phrase: [ 'cherry', 'blossom', 'viewing' ] } }
-	else if (JSON.stringify[obj2] == "[]" ){
-	    gtmp["gdb"] = genPattern2(genVariable(0), pickVerb(v, escode), pickNoun(ecode.unprocessed.phrase, escode));
+	else if (obj2 != undefined && emptyArray(obj2)){
+	    gtmp["gdb"] = genPattern2(genVariable(0), pickVerb(v, escode), pickNoun(escode.unprocessed.phrase, escode));
 	}
 	//{ stype: 'where', v: [ 'do', 'sell' ], s: [ 'they' ], obj2: [ 'soba' ] };
-	else if (JSON.stringify[obj2] != "[]" ){
+	else if (obj2 != undefined && !emptyArray(obj2)){
 	    gtmp["gdb"] = genPattern2(genVariable(0), pickVerb(v, escode), pickNoun(obj2, escode));
 	}
 	//{ stype: 'where', v: [ 'can', 'smoke' ], s: [ 'i' ] };
@@ -1066,7 +1073,12 @@ function gcode(escode){
     return gtmp;
 }
 
+function emptyArray(a){
+    return(a.length == 0);
+}
+
 function pickNoun(noun, escode){
+    if (noun == undefined) return undefined;
     var token; var i;
     if (noun[0] == 'the'){ token = noun[1]; i = 2 }
     else { token = noun[0]; i = 1 }
@@ -1077,6 +1089,7 @@ function pickNoun(noun, escode){
 }
 
 function pickVerb(verb, escode){
+    if (verb == undefined) return undefined;
     switch(verb[0]){
     case 'want_to': return verb[1];
     case 'can': return verb[1];
@@ -1134,9 +1147,43 @@ function genPattern4(v1, v2, el1, vl1, vl2){
     return s;
 }
 
-function generateChatcode(){
-    var chatout = chat();
-    return chatout;
+function chat1(escode){
+    if(escode.stype == 'imperative'){
+	return(imperativeOrder(escode));
+    }
+    else if (escode.stype == 'affirmative'){
+	return(affirmativeOrder(escode));
+    }
+    else{
+	return undefined;
+    }
+}
+
+function imperativeOrder(escode){
+    var v = pickVerb(escode.v, escode); 
+    var obj1 = pickNoun(escode.obj1, escode);
+    var obj2 = pickNoun(escode.obj2, escode);
+    var of = pickNoun(escode.of, escode);
+
+    var gcode = {}; var o = {};
+    //{ v: [ 'give' ], obj1: 'me', obj2: [ 'list' ],  of: [ 'correct', 'answer' ] }
+    //{ v: [ 'give' ], obj1: 'me', obj2: [ 'list' ],  of: [ 'incorrect', 'answer' ] }
+    //{ v: [ 'give' ], obj1: 'me', obj2: [ 'list' ],  of: [ 'unanswered', 'question' ] }
+    //{ v: [ 'cancel' ], obj2: [ 'the', 'number', '3', 'bus', 'stop' ] }
+    //{ v: [ 'make' ], obj2: [ 'the', 'number', '3', 'bus', 'stop' ] };
+    if (v == 'give' && obj2 == 'list' && of != undefined){
+	o["list"] = of; gcode["chat_out"] = o;
+    } else {
+	o[v] = obj2; gcode["chat_out"] = o;
+    }
+    return gcode;
+}
+
+function affirmativeOrder(escode){
+    //{ s: [ 'the', 'bus', 'stop' ], obj2: [],  for: [ 'okazaki', 'park' ],  unprocessed: { phrase: [ 'be', 'number', '3' ] } }
+    //{ s: [ 'the', 'number', '3', 'bus', 'stop' ],  v: [ 'be', 'go' ] }
+    //{ s: [ 'the', 'smoking', 'area' ], v: [ 'be' ], obj2: [],  where: { s: [ 'you' ], v: [ 'can', 'smoke' ] } }
+    //{ s: [ 'tetsuhaku' ], v: [ 'be' ], obj2: [ 'another', 'name' ], for: [ 'railway', 'museum' ] }
 }
 
 //console.log(gremlinAPI("g.V().match(__.as('x').out('change').has(label,of('オムツ')).select('x'))"));
