@@ -1153,7 +1153,10 @@ function pickVerb(verb,escode){
 	if (verb[1] == 'not') return 'not-'+verb[2];
 	else return verb[1];
     case 'do': return verb[1];
-    case 'be': if (verb.length >= 2) return 'be'+"-"+verb[1]; // [be, gone]
+    case 'be': 
+	if (verb.length == 2 && verb[1] == 'not') return 'be-not';
+	else if (verb.length >= 2) return 'be'+"-"+verb[1]; // [be, gone]
+	else return 'be';
     default: 
 	if (complement == null) return verb[0];
 	else return verb[0]+"-"+complement;
@@ -1286,8 +1289,14 @@ function affirmativeOrder(escode){
     }
 
     //{ s: [ 'tetsuhaku' ], v: [ 'be' ], obj2: [ 'another', 'name' ], for: [ 'railway', 'museum' ] }
+    //{ s: s: [ 'tetsuhaku' ], v: [ 'be', 'not' ], obj2: [ 'another', 'name' ], for: [ 'railway', 'museum' ] }
     if (v == 'be' && obj2 == 'another-name'){
 	var otmp = {}; otmp['s'] = s; otmp['alias_of'] = nfor; 
+	o["status"] =otmp; gcode["chat_out"] = o;
+	return gcode;
+    }
+    if (v == 'be-not' && obj2 == 'another-name'){
+	var otmp = {}; otmp['s'] = s; otmp['not_alias_of'] = nfor; 
 	o["status"] =otmp; gcode["chat_out"] = o;
 	return gcode;
     }
