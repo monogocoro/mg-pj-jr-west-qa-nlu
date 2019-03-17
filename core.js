@@ -252,13 +252,34 @@ function mirai_correct(s){
 //
 // j2e_replace: enju処理前に日本語を英語になおす
 //
+/*
 const j2edb = new Realm({path: __dirname+'/db/j2e_dic.db'});
 var j2edbdic = j2edb.objects('j2e_dicdb');
 function j2e_replace(s){
     //return replace_with_db(s, j2edbdic, "jword", "eword", "$");
     return replace_with_db(s, j2edbdic, "jword", "eword", "");
 }
+*/
 
+function get_j2edic(){
+    var url="http://ec2-52-192-173-39.ap-northeast-1.compute.amazonaws.com:3001/j2edics.json";
+    var request = require('sync-request');
+    var res = request('GET', url);
+    return JSON.parse(res.getBody('utf8'));
+}
+var j2edic = get_j2edic();
+
+function j2e_replace(s){
+    var i = 0;
+    while (i < j2edic.length){
+	var replaced = s.replace(j2edic[i].wamei, j2edic[i].romaji);
+	if (s != replaced){
+	    return replaced;
+	}
+	i++;
+    }
+    return s;
+}
 
 //
 // e2j_kanareplace: キーボード入力時、ひらがなを日本語に変換
@@ -690,6 +711,15 @@ function generateCode(line) {
     }
 }
 
+
+// -- generateGcode() ------------------------------------------------ 
+// 
+// generateEscode()でescodeを利用。
+// escoeeはecode[enju解析出力]から各種カテゴリを含め、文構造を再構成する
+// 通常の質問に対しては、gcode(escode)を呼び出し、
+// chat形式の場合は、chatgen(escode)を呼び出す。
+// --------------------------------------------------------------------
+
 function generateGcode(){
 
     var escode = generateEscode();
@@ -707,6 +737,9 @@ function generateGcode(){
     }
 }
 
+// -- generateEscode()
+//
+// 
 function generateEscode(){
 
     var i = 0;
@@ -1101,10 +1134,8 @@ function emptyArray(a){
 }
 
 function pickNoun(noun, escode){
-    console.log("noun-start:", noun);
     if (noun == undefined) return undefined;
     var token; var i;
-    console.log("noun[0]:", noun[0]);
     if (noun[0] == 'the'){ token = noun[1]; i = 2 }
     else if (noun[0] == 'be') { token = noun[1]; i = 2 } // for unprocessed 'be'
     else { token = noun[0]; i = 1 }
@@ -1112,7 +1143,6 @@ function pickNoun(noun, escode){
 	if (noun[i] == "'s") {i++; continue;} //skip
 	token = token + '-' + noun[i]; i++
     }
-    console.log("noun-end:", token);
     return token;
 }
 
@@ -1179,6 +1209,12 @@ function genPattern4(v1, v2, el1, vl1, vl2){
     s = s.replace(/VL2/g, addquote(vl2));
     return s;
 }
+
+// ------------------------------------------------------------
+// {chat_in: ...}形式で入ってくる文[line]の対処
+// 入力lineはgenerateEscode()で処理され、escodeとして保存される。
+// 出力は {gcocde: {chat_out: ...}}形式
+// ------------------------------------------------------------
 
 function chatgen(escode){
     if(escode.stype == 'imperative'){
@@ -1258,10 +1294,6 @@ function affirmativeOrder(escode){
     }
     return undefined;
 }
-
-
-//console.log(gremlinAPI("g.V().match(__.as('x').out('change').has(label,of('オムツ')).select('x'))"));
-
 
 // ------------------------------------------------------
 // 入力テスト
