@@ -35,7 +35,7 @@ var debug = false;
 
 var noEmpty = true;
 
-var chat; // for chat mode flag
+var chat = false; // for chat mode flag
 
 // make it availableでavailableを未処理で残して場合。
 // 具体的にはunprocessedの中で設定し、pickVerbの中で使用する。
@@ -89,6 +89,7 @@ function interpreter(language, mode_flag, line0){
     tokenIdList = [];
     tokenList = [];
     complement = null;
+    chat = false;
 
     input["line"] = [];
     input["j2e_replace"] = [];
@@ -117,7 +118,6 @@ function interpreter(language, mode_flag, line0){
     //    mode_flag: 'none'（通常) | 'select'（選択） | 'command'（音声コマンド）
     //var line = voice_correct(line0); // 音声入力からテキスト変換の誤りを訂正
     var line = line0;
-    chat = false;
     if (line[0] === '{'){
 	chat = true;
 	//session_no = JSON.parse(line).session_no;
@@ -1075,7 +1075,6 @@ function gremlinAPI (query){
     return JSON.parse(res.getBody('utf8'));
 }
 
-
 function gcode(escode){
     var gtmp = {};
     switch(escode.stype){
@@ -1201,7 +1200,7 @@ function genPattern3(v1, vl1){ //対象VL1が一般名詞,固有名詞両方を�
 }
 
 function genPattern4(v1, v2, el1, vl1, vl2){
-    var s = "g.V().match(__.as(V1).has(label, of(VL1)), __.as(V1).out('instanceOf').as(V2),__.as(V2).in(EL1).has(label, of(VL2))).select(V2)";
+    var s = "g.V().match(__.as(V1).has(label, of(VL1)), __.as(V1).in('instanceOf').as(V2),__.as(V2).in(EL1).has(label, of(VL2))).select(V2)";
     s = s.replace(/V1/g, addquote(v1));
     s = s.replace(/V2/g, addquote(v2));
     s = s.replace(/EL1/g, addquote(el1));
