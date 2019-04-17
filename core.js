@@ -932,11 +932,15 @@ function gcode(escode){
     case 'imperative': break;
     case 'affirmative':
 	var target;
+	console.log("v:", v);
 	if (escode.obj2.length > 0 && obj2 != 'place') target = obj2;
-	else {
-	    console.log("pckNoun1:", escode.where);
+	else if (escode.where != undefined) {
 	    target = pickNoun(escode.where.s, escode);
 	}
+	else if (escode.to != undefined){ // I want to go to A. 
+	    target = pickNoun(escode.to, escode);
+	}
+	console.log("target:", target);
 	gtmp["gdb"] = genPattern2(var0, v, target);
 	break;
     default:
