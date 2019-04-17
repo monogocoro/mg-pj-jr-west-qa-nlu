@@ -1,51 +1,55 @@
 //
 // Nutural Language Understanding
-//   matsuda@monogocoro.co.jp   2018.12 for JRW FAQ強化学習システム
-//      (a) FAQモード input: line=文字列, output: JCODE
+//   matsuda@monogocoro.co.jp   2019.3 ver0.4
+//      (a) queryモード input: line=文字列, output: {gscode: Gremlinコード}
 //      (b) CHATモード
 //            input: line={chat_in: 文字列}
-//            output: {chat_out: {chat_reply: JCODE, chat_edit: DB編集query}}
-//                JCODE : 
-//                DB編集query: {}あるいは{"editSDB": ... ]のJSONコード
+//            output: {gscode: JSONコード}
 
-
-//   matsuda@monogocoro.co.jp   2018.11
+// 【全体の構成】
 //
-// 全体の構成
-// 日本語音声 ==[Google 音声toテキスト] ==> 日本語テキスト
-// 日本語テキスト ==[翻訳みらい] ==> 英文(mirai)
-// 英文(mirai) ==[enju: HPSG] ==> 構文解析結果(XML)
-//      HPSG: Head-driven phrase structure grammar 主辞駆動句構造文法
-// 構文解析結果(JSON) ==[generateCode()] ==> ターミナル式 [ecode]
-// 意味トークン抽出: ecode ==[generateScode()] ==> 意味トークン式 [scode]
-// scode == [generateJcode()]  == query生成 [jcode]
+// カーネルトップ： function interpreter(line)
+//   enjujs = get_enju_json(line, language)
+//   
+//   in get_enju_json
+//      text = j2e_replace(text) 翻訳で失敗しそうな単語をローマ字化する
+//      mirai = get_ja2en(text) 翻訳みらいを使用し、和文を英文に変換する
+//      enjujs = get_enju_xml(mirai) みらいの結果[英文]をenjuに掛け、XML形式の出力を得る
+//      => xmlをJSON化し、戻り値 enjujs とする。
+// 
+//   in findTokenList(enjujs)
+//      最後。JSON.stringify(JSON.parse(parsed), getToken)はgetTokenを呼び出す。
+//   
+//      getToken(key, value)の実行によって、副作用としてnodemark[節]、tokens[終端]を生成
+// 
+//   interpreter()に戻る
+//     createTokenObjects(tokens) 
+//        nodemarkを利用し、tokensの中身をオブジェクト化しtokenListに残す。
+//        この時点で、tokensの中身は消去。
+//
+//   in resolveArgLinks()
+//     tokenList内を探索し、主としてarg1, arg2, arg3の参照関係を調整する。
+// 
+//   in generateCode(line)  lineを引き渡しているので原文を利用するため。現在未利用。
+//        tokenListを利用し、ecode(大域変数)を生成
+//
+//   in generateGcode() gcodeを生成
 
 'use strict';
 var _ = require('lodash');
-const Realm = require('realm');
-
 var debugC = false;  // enju木出力
 var eprint = false; // ecode出力
-var print = false;
-var debug = false;
 
 // --------------------
 // システムインタプリタ
 // -------------------
 
-var noEmpty = true;
-
-var chat = false; // for chat mode flag
-
-// make it availableでavailableを未処理で残して場合。
-// 具体的にはunprocessedの中で設定し、pickVerbの中で使用する。
+var noEmpty = true; //入力状態を制御
+var chat = false; // チャットモード切り替え
 var complement = null; 
+   // make it availableでavailableを未処理で残して場合。
+   // 具体的にはunprocessedの中で設定し、pickVerbの中で使用する。
 
-var session_no;
-
-var input = {}; //protocol stack for line, ecode, etc:
-
-//
 // 文の種類
 //
 // 平叙文 affirmative [AFF]
@@ -60,15 +64,8 @@ var input = {}; //protocol stack for line, ecode, etc:
 // 感嘆文 exclamatory [EXCL]
 //  
 
+var input = {}; //protocol stack for line, ecode, etc:
 input['type'] = 'AFF';
-
-
-//テスト用例文 
-//  明日の夕方6時30分にスタバで会いましょう。
-//  Let's meet at STARBUCKS time 0630 tomorrow evening.
-//  私は死んでない。 
-//  I'm not dead.
-
 function printInput(obj){
     console.log("line:",obj.line[0]);
     console.log("j2e_replace:",obj.j2e_replace[0]);
@@ -98,8 +95,6 @@ function interpreter(language, mode_flag, line0){
     input["enju"] = [];
     input["ecode"] = [];
 
-    // --->
-
     function ucfirst(s){
 	return(s.charAt(0).toUpperCase() + s.slice(1));
     }
@@ -120,7 +115,6 @@ function interpreter(language, mode_flag, line0){
     var line = line0;
     if (line[0] === '{'){
 	chat = true;
-	//session_no = JSON.parse(line).session_no;
         //line = JSON.parse(line).chat_in;
 	line = eval(line);
     }
@@ -164,110 +158,15 @@ function interpreter(language, mode_flag, line0){
 }
 
 //
-// Neo4j グラフデータベース
-//
-function neo4jAPI (token){
-    var params_text = token.replace(/\s+/g, "");
-    var neo4jURL="http://ec2-54-65-31-201.ap-northeast-1.compute.amazonaws.com:3000/things/";
-    var url = neo4jURL + encodeURIComponent(params_text);
-    var request = require('sync-request');
-    var res = request('GET', url);
-    return JSON.parse(res.getBody('utf8'));
-}
-//console.log(neo4jAPI("本屋"));
-//console.log(neo4jAPI("お手洗い"));
-
-function existDBQ (token){
-    return (neo4jAPI(token).data !== null);
-}
-//console.log(existDBQ("本屋"));
-//console.log(existDBQ("お手洗い"));
-
-
-//
-// データベースを利用した変換関数
-// 
-function replace_with_db(s, dbobjs, key1, key2, prefix){
-    // prefix: "" | "$"
-    var modified = s;
-    var j = 0;
-    //console.log("dbobjs:", dbobjs);
-    var i = 0;
-    while (i < dbobjs.length) {
-	//console.log("key1: ",key1, " value:", dbobjs[i][key1], " key2:", key2, " value: ",dbobjs[i][key2]);
-        j = modified.indexOf(dbobjs[i][key1]);
-        if (j == -1) {
-	    i++;
-	    continue
-	};
-        modified = modified.replace(dbobjs[i][key1], prefix+dbobjs[i][key2]);
-        break;
-    }
-    return modified;
-}
-/*
-function replace_with_db(s, dbobjs, key1, key2, prefix){
-    // prefix: "" | "$"
-    var modified = s;
-    var j = 0;
-    //console.log("dbobjs:", dbobjs);
-    while (j != -1) {//一文に複数の置換が起きる場合を考慮
-        for (var i = 0; i < dbobjs.length; i++) {
-	    console.log("key1: ",key1, " value:", dbobjs[i][key1], " key2:", key2, " value: ",dbobjs[i][key2]);
-            j = modified.indexOf(dbobjs[i][key1]);
-            if (j == -1) continue;
-            modified = modified.replace(dbobjs[i][key1], prefix+dbobjs[i][key2]);
-            break;
-        }
-    };
-    return modified;
-}
-*/
-//
-// voice_correnct: interpreter補助関数
-//
-// 音声toテキストでの誤変換に対処
-// 例。当時 => toji => 東寺
-// use. ./db/voice_correction_dic.db 辞書
-// 
-const vcdb = new Realm({path: __dirname+'/db/voice_correction_dic.db'});
-var vcdbdic = vcdb.objects('voice_correction_dicdb');
-function voice_correct(s){
-    return replace_with_db(s, vcdbdic, "henkan", "teisei", "");
-}
-
-//
-// mirai_correnct: interpreter補助関数
-//
-// 例。日本語固有名詞$higashihongaji
-// みらいは、$highonganjiと誤変換。機械学習の弊害
-// use. ./db/mirai_correction_dic.db 辞書
-// 
-const mcdb = new Realm({path: __dirname+'/db/mirai_correction_dic.db'});
-var mcdbdic = mcdb.objects('mirai_correction_dicdb');
-function mirai_correct(s){
-    return replace_with_db(s, mcdbdic, "wrong", "teisei", "");
-}
-
-//
 // j2e_replace: enju処理前に日本語を英語になおす
 //
-/*
-const j2edb = new Realm({path: __dirname+'/db/j2e_dic.db'});
-var j2edbdic = j2edb.objects('j2e_dicdb');
-function j2e_replace(s){
-    //return replace_with_db(s, j2edbdic, "jword", "eword", "$");
-    return replace_with_db(s, j2edbdic, "jword", "eword", "");
-}
-*/
-
-function get_j2edic(){
+function get_j2edic(){ //GraphDB
     var url="http://ec2-52-192-173-39.ap-northeast-1.compute.amazonaws.com:3001/j2edics.json";
     var request = require('sync-request');
     var res = request('GET', url);
     return JSON.parse(res.getBody('utf8'));
 }
-var j2edic = get_j2edic();
+var j2edic = get_j2edic(); //j2edicデータ
 
 function j2e_replace(s){
     var i = 0;
@@ -282,55 +181,21 @@ function j2e_replace(s){
 }
 
 //
-// e2j_kanareplace: キーボード入力時、ひらがなを日本語に変換
-//
-//const e2jdb = new Realm({path: __dirname+'/db/e2j_dic.db'});
-//var e2jdbdic = e2jdb.objects('e2j_dicdb');
-function e2j_kanareplace(s){
-    return replace_with_db(s, e2jdbdic, "hiragana", "jword", "");
-}
-
-//
-// e2j_replace: jcode生成後、英語を日本語になおす
-//
-const e2jdb = new Realm({path: __dirname+'/db/e2j_dic.db'});
-var e2jdbdic = e2jdb.objects('e2j_dicdb');
-function e2j_replace(s){
-    //console.log("e2j_replace:", s);
-    var r =e2jdbdic.filtered('eword = '+'"'+s+'"');
-    //console.log("r:", r, " eword:", r[0].eword, " jword:", r[0].jword);
-    if (JSON.stringify(r) == "{}") return s;
-    else return r[0].jword;
-}
-
-//console.log(e2j_replace("where is taxi_stand?"));
-
-//
-// 英単語から日本語を得る
-//
-function jword(eword){
-    var r = e2jdbdic.filtered('eword = '+ '"' + eword + '"');
-    if (JSON.stringify(r) == "{}") return "不明";
-    else return(r[0].jword);
-}
-//console.log(jword("bookstore"));
-//console.log(jword("restroom"));
-
-//
 // 複文を単文に変換
 //
+// *** 駄目！***
+// 複文処理、あるいは「,」処理を正確に
+
 function double2single(s){
-    //I left something on the train. Where should I go?
-    //I left something on the train and Where should I go?
+    // 現状 ", and" あるいは ", or", ", then" に対処
     var modified = s;
     // 暫定処理。ちゃんと汎用化！
-    modified = modified.replace(". Where", " and Where ");
-    modified = modified.replace(". Is", " and Is ");
-    modified = modified.replace(". What", " and What ");
+    modified = modified.replace(", and", " and");
+    modified = modified.replace(", or", " or");
+    modified = modified.replace(", then", " then");
     return modified;
 }
-
-//console.log(double2single("I left something on the train. Where should I go?"));
+//console.log(double2single("I left something on the train, then wWhere should I go?"));
 
 // 
 // --------------------------------------
@@ -345,39 +210,23 @@ function get_enju_json(text0, language) {
     if (language == "en"){
 	mirai = text0;
     }
-    else { // japanse
-	/* 日本語一部 $化 */
-	var text = j2e_replace(text0);
-
+    else { //日本語
+	var text = j2e_replace(text0); //みらいに掛ける前の前処理
 	input["j2e_replace"].push(text);
-	
-	/* 日本語->English */ mirai = get_ja2en(text);
-	mirai = mirai_correct(mirai); // 機械学習による誤変換を訂正
+	// 日本語 => English
+	mirai = get_ja2en(text);
 	mirai = preprocessing_time(mirai);
-	mirai = double2single(mirai); //複文を単文に
+	//mirai = double2single(mirai); 
     }
     input["mirai_extend"].push(tokenSplit(mirai));
     input["mirai"].push(mirai);
 
-    //重要　
-    /*
-    たとえば動詞"was found"はenjuの原型では[be, find]となる。
-    文の正確な意味をつかみたい時は、'be-found'もしくはもっと踏み込んで'was-found'とすべき。
-    一方、辞書管理は煩雑になる。でも、本来はやるべき。
-    */
-
-    //複文
-    //車内で忘れ物をしたがどこに行けばいいか。
-    //I left something on the train. Where should I go?
-    //=>I left something on the train and Where should I go?
-   
-    /* English-> enju.xml */ var xml = get_enju_xml(mirai);
+    var xml = get_enju_xml(mirai); //enju呼び出し、結果はxml
     var json = {};
-    /* enju.xml->enu.json */ parseString(xml, function (err, result) {
+    parseString(xml, function (err, result) { //enju.xml => enju.json
         json = JSON.stringify(result);
     });
-    //console.log(JSON.stringify(JSON.parse(json), null, ' '));
-    //input["enju"].push(json);
+    if (debugC) input["enju"].push(json);
     return json;
 }
 
@@ -394,8 +243,6 @@ function tokenSplit(s0) {
     s = s.replace(",", " ,");
     s = s.replace(/\.$|\?$/, '');
     return s;
-    //var a = s.split(' ');
-    //return a.filter(function (e) { return e !== ""; });
 }
 //console.log("tokenSplit:", tokenSplit("I'm not dead."));
 
@@ -418,43 +265,26 @@ function not_tokenSplit(s0){
 //console.log(tokenSplit("Isn't the Haruka that leaves at 6:22 the platform 30?"));
 
 // get_enju_json 補助関数: get_ja2en
-function get_ja2en(text) {
+function get_ja2en(text) { //call みらい
     
     var params_text = text.replace(/\s+/g, "");
     var url = 'https://preprocessor.monogocoro.ai/ja2en/' + encodeURIComponent(params_text);
     // for goolish: add "?google=True" in the last of the sentence
     var request = require('sync-request');
     var res = request('GET', url);
+    console.log(res.getBody('utf8'));
     return res.getBody('utf8');
+
 }
 
-
 // get_enju_json 補助関数: get_enju_xml
-function get_enju_xml(text0) {
+function get_enju_xml(text0) { //call enju
     
-    //var text = cutdollar(text0);
     var text = text0;
     var url = 'https://preprocessor.monogocoro.ai/en2enju_xml/' + encodeURIComponent(text);
     var request = require('sync-request');
     var res = request('GET', url);
     return res.getBody('utf8');
-}
-
-function cutdollar(str){
-    
-    // MIRAIで不用意に変換されないよう、特定の日本語固有名詞の英語名の冒頭に$マークをつける。
-    // MIRAI翻訳後の英文をenjuにかける前に$マークを削除する。
-    // 例. 
-    // "I went to $KINKAUJI." => I went to KINKAKUJI.
-    // "I spent $10.00 yesterday" => I spent $10.00 yesterday.
-    var s = "";
-    var pat = /\d/; //数字
-    for (var i = 0; i < str.length; i = i + 1){
-	var c = str[i];
-	if (c == '$' && !pat.test(str[i+1])) continue;
-	s = s + c;
-    }
-    return s;
 }
 
 function preprocessing_time(s){
@@ -477,7 +307,8 @@ function preprocessing_time(s){
 	    if (r2.length == 1) r2 = "0"+r2;
 	    r = ["time", r1+r2];
 	}
-	stack = _.union(stack, r);
+	//stack = _.union(stack, r); バグ。rの予想でstackに「ないもの」だけを足していた
+	stack = join(stack, r);
     }
 
     var ss = "";
@@ -486,6 +317,13 @@ function preprocessing_time(s){
     }
     ss = ss + stack[i];
     return ss;
+}
+
+function join(A,B){
+    //配列Aの後ろに配列Bの中身を足す
+    var a = A;
+    for (var i = 0; i < B.length; i++) a.push(B[i]);
+    return a;
 }
 
 // --------------------------------------
@@ -509,12 +347,8 @@ var nodemarks = [];
 var tokens = [];
 function getToken(key, value) {
     
-    if (key == "nodemark") {
-        nodemarks.push(value);
-    }
-    if (key == "tok") {
-        tokens.push(value);
-    }
+    if (key == "nodemark")  nodemarks.push(value);
+    if (key == "tok")  tokens.push(value);
     return value;
 }
 
@@ -621,7 +455,6 @@ function tokenIndex(id) {
 var ecode;
 function generateCode(line) {
 
-    if (print) console.log("--ecode--");
     if (JSON.stringify(tokenList) == "[]") {
         console.log(line, "が翻訳出来ませんでした。");
         return;
@@ -691,7 +524,7 @@ function generateCode(line) {
             code["pos"] = 'WRB';
         }
 
-        //if (debugC) console.log("code = ", JSON.stringify(code));
+        if (debugC) console.log("code = ", JSON.stringify(code));
         stack.push(code);
         code = {};
     }
@@ -839,6 +672,7 @@ function unprocessed(ti){
 }
 
 function imperative(ti){
+
     var i = ti; var phrase = [];
     var o = {}; o['phrase'] = phrase; o['i'] = i;
     if (ecode[i].base != "please"){ return o };
@@ -911,7 +745,6 @@ function scode(ti, ps){
 	if (i > ecode.length-1) return so;
     }
 
-
     //前置詞
     while (i < ecode.length && ecode[i].cat == 'P'){
 	o = prepostion(i, so); tmpi = o.i;
@@ -928,13 +761,6 @@ function phraseNoun(ti, targ){
     var i = ti; var target = targ; var phrase = [];
     var o = {}; o['i'] = i; o['phrase'] = phrase; //返還オブジェクト
     if (ti == ecode.length) return o; //探索範囲オーバー
-
-    /* 
-    // let  me know ... meを主語としないため ==> 本来は「命令形」として処理すべき
-    // ただし、tell me のケースには以下の記述は不要。
-    if (i > 0 && ecode[i-1].cat == 'V' && ecode[i].cat == 'N' && 
-	ecode[i-1].arg1 == null && ecode[i-1].arg2 == ecode[i].base) return o;
-    */
 
     // 不定冠詞について。不定冠詞.arg1と次のトークン.arg1が等しい場合、targetを変更
     if (ecode[i].base == 'an' || ecode[i].base == 'a'){
@@ -970,17 +796,6 @@ function phraseNoun(ti, targ){
     }
     return o;
 }
-
-/*
-function verb_nounCheck(ecode, i){
-
-   // ひかり特急券 hikari express[VB] ticket
-   // 特急 Limited[VBN] express[VBP] to osaka
-    if (ecode.base != 'be' && i < ecode.length && (ecode[i].pos == 'VB' || ecode[i].pos == 'VBP') &&
-	ecode[i].arg1 == null && ecode[i].arg2 == null) return true;
-   else false;
-}
-*/
 
 function adjective(ti){ //形容詞
     //the tall beautiful man のように形容的に使われるものは問題なく処理される。
@@ -1041,7 +856,6 @@ function phraseVerb(ti, so){ //動詞句
     return o;
 }
 
-
 function prepostion(ti){ //前置詞句
 
     var i = ti; var target; var phrase = []; var o = {}; o['i'] = i; o['phrase'] = phrase;
@@ -1065,61 +879,65 @@ function prepostion(ti){ //前置詞句
     return o;
 }
 
-function gremlinAPI (query){
-    console.log("query:", query);
-    var params_text = query.replace(/\s+/g, "");
-    var gremlinURL = "http://ec2-52-192-173-39.ap-northeast-1.compute.amazonaws.com:3001/misc/gremlin/";
-    var url = gremlinURL + encodeURIComponent(params_text);
-    var request = require('sync-request');
-    var res = request('GET', url);
-    return JSON.parse(res.getBody('utf8'));
-}
+const empty = 'empty'; //key-valueのvalueは存在し、value = []のとき。 value = empty
+                       //valueそのものがないときは、value = undefine
 
+//【Gremlinコード生成】 --- gcode(escode)
+//
+// escodeのstype（文タイプ）および文構造からgenPatternのタイプを選択
+// 当然、escode引いては、和文=>英文ツールおよびenjuの解析結果に依存。止む終えない依存。
 function gcode(escode){
+
     var gtmp = {};
+    var var0 = genVariable(0); var var1 = genVariable(1); 
+    var s = pickNoun(escode.s, escode);
+    var v = pickVerb(escode.v, escode);
+    var obj2 = pickNoun(escode.obj2, escode);
     switch(escode.stype){
     case 'be_there': 
-	gtmp["gdb"] = genPattern3(genVariable(0), pickNoun(escode.s, escode));
+	gtmp["gdb"] = genPattern3(var0, s);
 	break;
     case 'there_be': break;
     case 'what': 
-	var s = escode.s;
-	gtmp["gdb"] = genPattern1(genVariable(0), pickNoun(s, escode));
+	gtmp["gdb"] = genPattern1(var0, s);
 	break;
     case 'where':
-	var s = escode.s; var v = escode.v; var obj2 = escode.obj2; var nfor = escode.for;
 	//{ stype: 'where', s: [ 'be' ], obj2: [ 'the', 'firework' ], unprocessed: { phrase: [ 'display' ] } }
-	if (v == undefined && s[0] == 'be' && obj2 != undefined){
-	    gtmp["gdb"] = genPattern3(genVariable(0), pickNoun(obj2, escode));
+	if (v == undefined && s == 'be' && obj2 != empty){
+	    gtmp["gdb"] = genPattern3(var0, obj2);
 	}
 	//{ stype: 'where', v: [ 'be' ], s: [ 'the', 'bus', 'stop' ], obj2: [], for: [ 'okazaki', 'park' ] };
-	else if (v[0] == 'be' && nfor != undefined ){
-	    gtmp["gdb"] = genPattern4(genVariable(0), genVariable(1), 'go', pickNoun(s), pickNoun(nfor));
+	else if (v == 'be' && escode.for != undefined ){
+	    var nfor = pickNoun(escode.for, escode);
+	    gtmp["gdb"] = genPattern4(var0, var1, 'go', s, nfor);
 	}
 	//{ stype: 'where', v: [ 'be' ], s: [ 'restroom' ] }
 	//{ stype: 'where', v: [ 'be', 'hold' ], s: [ 'the', 'firework' ] }
-	else if (v[0] == 'be'){
-	    gtmp["gdb"] = genPattern3(genVariable(0), pickNoun(s, escode));
+	else if (v == 'be' || v == 'be-hold'){
+	    gtmp["gdb"] = genPattern3(var0, s);
 	}
 	//{ stype: 'where', v: [ 'can', 'go' ], s: [ 'we' ], obj2: [], unprocessed: { phrase: [ 'cherry', 'blossom', 'viewing' ] } }
-	else if (obj2 != undefined && emptyArray(obj2)){
-	    gtmp["gdb"] = genPattern2(genVariable(0), pickVerb(v, escode), pickNoun(escode.unprocessed.phrase, escode));
+	else if (obj2 == empty && escode.unprocessed != undefined){
+	    gtmp["gdb"] = genPattern2(var0, v, pickNoun(escode.unprocessed.phrase, escode));
 	}
 	//{ stype: 'where', v: [ 'do', 'sell' ], s: [ 'they' ], obj2: [ 'soba' ] };
-	else if (obj2 != undefined && !emptyArray(obj2)){
-	    gtmp["gdb"] = genPattern2(genVariable(0), pickVerb(v, escode), pickNoun(obj2, escode));
+	else if (obj2 != undefined){
+	    gtmp["gdb"] = genPattern2(var0, v, obj2);
 	}
 	//{ stype: 'where', v: [ 'can', 'smoke' ], s: [ 'i' ] };
 	else{
-	    gtmp["gdb"] = genPattern0(genVariable(0), pickVerb(v, escode));
+	    gtmp["gdb"] = genPattern0(var0, v);
 	}
 	break;
     case 'imperative': break;
     case 'affirmative':
 	var target;
-	if (escode.obj2.length > 0 && pickNoun(escode.obj2, escode) != 'place') target = escode.obj2;
-	else target = escode.where.s;
-	gtmp["gdb"] = genPattern2(genVariable(0), pickVerb(escode.v, escode), pickNoun(target, escode));
+	if (escode.obj2.length > 0 && obj2 != 'place') target = obj2;
+	else {
+	    console.log("pckNoun1:", escode.where);
+	    target = pickNoun(escode.where.s, escode);
+	}
+	gtmp["gdb"] = genPattern2(var0, v, target);
 	break;
     default:
 	gtmp["gdb"] = "fail";
@@ -1128,50 +946,10 @@ function gcode(escode){
     return gtmp;
 }
 
-function emptyArray(a){
-    return(a.length == 0);
-}
-
-function pickNoun(noun, escode){
-    if (noun == undefined) return undefined;
-    var token; var i;
-    if (noun[0] == 'the'){ token = noun[1]; i = 2 }
-    else if (noun[0] == 'be') { token = noun[1]; i = 2 } // for unprocessed 'be'
-    else { token = noun[0]; i = 1 }
-    while (i < noun.length){
-	if (noun[i] == "'s") {i++; continue;} //skip
-	token = token + '-' + noun[i]; i++
-    }
-    return token;
-}
-
-function pickVerb(verb,escode){
-    if (verb == undefined) return undefined;
-    switch(verb[0]){
-    case 'want_to': return verb[1];
-    case 'can': 
-	if (verb[1] == 'not') return 'not-'+verb[2];
-	else return verb[1];
-    case 'do': return verb[1];
-    case 'be': 
-	if (verb.length == 2 && verb[1] == 'not') return 'be-not';
-	else if (verb.length >= 2) return 'be'+"-"+verb[1]; // [be, gone]
-	else return 'be';
-    default: 
-	if (complement == null) return verb[0];
-	else return verb[0]+"-"+complement;
-    }
-}
-
-function genVariable(indx){
-    var symbol = 'a';
-    return String.fromCharCode(symbol.charCodeAt(0)+indx);
-
-}
-
-function addquote(name){
-    return "\'"+name+"\'";
-}
+//【Gremlinコードのパターン】
+// 
+// escodeからgremlinコード（dot連接）への変換アルゴリズム未定。現状は予め用意したパターンへの埋込で対応。
+// したがって現状では、必要に応じてパターンを増やす戦略を取る。
 
 function genPattern0(v1, el1){ //関係対象を知りたい
     var s = "g.V().match(__.as(V1).in(EL1)).select(V1)";
@@ -1195,14 +973,14 @@ function genPattern2(v1, el1, vl1){ //具体的な対象VL1へ行く手段を知
     return s;
 }
 
-function genPattern3(v1, vl1){ //対象VL1が一般名詞,固有名詞両方を持つ場合
+function genPattern3(v1, vl1){ //対象がクラスVL1のインタンスである場合
     var s = "g.V().match(__.as(V1).out('instanceOf').has(label, of(VL1))).select(V1)";
     s = s.replace(/V1/g, addquote(v1));
     s = s.replace(/VL1/g, addquote(vl1));
     return s;
 }
 
-function genPattern4(v1, v2, el1, vl1, vl2){
+function genPattern4(v1, v2, el1, vl1, vl2){//クラスV1に対しインスタンスV2が関係する場合。
     var s = "g.V().match(__.as(V1).has(label, of(VL1)), __.as(V1).in('instanceOf').as(V2),__.as(V2).in(EL1).has(label, of(VL2))).select(V2)";
     s = s.replace(/V1/g, addquote(v1));
     s = s.replace(/V2/g, addquote(v2));
@@ -1212,13 +990,76 @@ function genPattern4(v1, v2, el1, vl1, vl2){
     return s;
 }
 
-// ------------------------------------------------------------
-// {chat_in: ...}形式で入ってくる文[line]の対処
-// 入力lineはgenerateEscode()で処理され、escodeとして保存される。
-// 出力は {gcocde: {chat_out: ...}}形式
-// ------------------------------------------------------------
+function genVariable(indx){ // with indx = 3 => 'a3'
+    var symbol = 'a';
+    return String.fromCharCode(symbol.charCodeAt(0)+indx);
+}
+function addquote(name){ return "\'"+name+"\'" } // 'name' => "'name'"
 
+//【名詞配列から主要部分を取り出す】pickNoun(noun, escode)
+//
+// 名詞配列の形式はescode（生成はgenerateEscode())に依存。
+// nounの例: [the, manga, museum] => token: manga-museum
+// noun配列冒頭部分の処理
+//   case1: theは排除
+//   case2: {unprocessed: [be, ..]}の場合、beを排除
+//   default: noun[0]をtokenの先頭とする。
+// noun配列要素をすべて"-"で連接。
+// A's のような場合、noun=[A, 's]となり、'sを（今は）排除。
+function pickNoun(noun, escode){
+
+    if (noun == undefined) return undefined;
+    if (emptyArray(noun)) return empty;
+    var token; var i;
+    if (noun[0] == 'the'){ token = noun[1]; i = 2 }
+    else if (noun.length > 1 && noun[0] == 'be') { token = noun[1]; i = 2 } // for unprocessed 'be'
+    else { token = noun[0]; i = 1 }
+    while (i < noun.length){
+	if (noun[i] == "'s") {i++; continue;} //skip
+	token = token + '-' + noun[i]; i++
+    }
+    return token;
+}
+
+//【動詞配列から主要部分を取り出す】pickVerb(verb,escode)
+//
+// 動詞配列の形式はescode（生成はgenerateEscode())に依存。
+// [want_to, v] => v
+// [can, not, v] => not-v
+// [can, v] => v
+// [do, v] => v
+// [be, not] => be-not
+// [be, v(passive)] => be-v
+// [be] => be
+// 補語complementがあるとき、v-complement
+function pickVerb(verb,escode){
+
+    if (verb == undefined) return undefined;
+    if (emptyArray(verb)) return empty;
+    switch(verb[0]){
+    case 'want_to': return verb[1];
+    case 'can': 
+	if (verb[1] == 'not') return 'not-'+verb[2];
+	else return verb[1];
+    case 'do': return verb[1];
+    case 'be': 
+	if (verb.length == 2 && verb[1] == 'not') return 'be-not';
+	else if (verb.length >= 2) return 'be'+"-"+verb[1]; // [be, gone]
+	else return 'be';
+    default: 
+	if (complement == null) return verb[0];
+	else return verb[0]+"-"+complement;
+    }
+}
+
+function emptyArray(a){ return(a.length == 0 ) } // [] => true
+
+// 【チャットやりとり】chatgen(escode)
+//
+// 入力: {chat_in: ...} 出力: {chat_out: ...}
+// 入力escode はlineがgenerateEscode()で処理され生成されたもの。
 function chatgen(escode){
+
     if(escode.stype == 'imperative'){
 	return(imperativeOrder(escode));
     }
@@ -1230,6 +1071,15 @@ function chatgen(escode){
     }
 }
 
+//【命令形】imperativeOrder(escode)
+//
+// 英語化した場合、先頭動詞が名詞化しない、ことが前提。
+// Pleaseが先頭についた場合は、確実に名詞化しない。
+// しかし、単なる動詞の場合は動詞化する方が少ない！
+//
+// 「場合分け」の課題。if then else ではなく意味的パターンマッチに変更したい。
+//  ただし、srules.jsと組み合わせたパターンマッチは動的な情報を使えない、
+//  局所的な単一パターンマッチであり、使い勝手が悪い。
 function imperativeOrder(escode){
 
     var v = pickVerb(escode.v, escode); 
@@ -1241,39 +1091,51 @@ function imperativeOrder(escode){
     //{ v: [ 'give' ], obj1: 'me', obj2: [ 'list' ],  of: [ 'correct', 'answer' ] }
     //{ v: [ 'give' ], obj1: 'me', obj2: [ 'list' ],  of: [ 'incorrect', 'answer' ] }
     //{ v: [ 'give' ], obj1: 'me', obj2: [ 'list' ],  of: [ 'unanswered', 'question' ] }
-    //{ v: [ 'cancel' ], obj2: [ 'the', 'number', '3', 'bus', 'stop' ] }
-    //{ v: [ 'make' ], obj2: [ 'the', 'number', '3', 'bus', 'stop' ], unprocessed: [ 'available' ] }
-    //   in pickVerb() v-> make-available
-
     if (v == 'give' && obj2 == 'list' && of != undefined){
 	var otmp = {}; otmp['v'] = 'list'; otmp['obj'] = of;
 	o['order'] = otmp; gcode["chat_out"] = o;
 	return gcode;
     }
+    //{ v: [ 'cancel' ], obj2: [ 'the', 'number', '3', 'bus', 'stop' ] }
+    //{ v: [ 'make' ], obj2: [ 'the', 'number', '3', 'bus', 'stop' ], unprocessed: [ 'available' ] }
+    //   in pickVerb() v-> make-available
     var otmp = {}; otmp['v'] = v; otmp['obj'] = obj2;
     o['order'] = otmp; gcode["chat_out"] = o;
     return gcode;
 
 }
 
+// 【〜である】登録 affirmativeOrder()
+//
+// 「場合分け」の課題。if then else ではなく意味的パターンマッチに変更したい。
+//  ただし、srules.jsと組み合わせたパターンマッチは動的な情報を使えない、
+//  局所的な単一パターンマッチであり、使い勝手が悪い。
 function affirmativeOrder(escode){
 
-    var s = pickNoun(escode.s, escode);
-    var v = pickVerb(escode.v, escode); 
+    var s = pickNoun(escode.s, escode); //console.log("s:", s);
+    var v = pickVerb(escode.v, escode); //console.log("v:", v);
     var obj1 = pickNoun(escode.obj1, escode);
     var obj2 = pickNoun(escode.obj2, escode);
     var nfor = pickNoun(escode.for, escode);
+    var nin = pickNoun(escode.in, escode);
     var gcode = {}; var o = {};
 
     //{ s: [ 'the', 'smoking', 'area' ], v: [ 'be' ], obj2: [],  where: { s: [ 'you' ], v: [ 'can', 'smoke' ] } }
-    if (v == 'be' && obj2 == undefined && escode.where != undefined){
+    if (v == 'be' && obj2 == empty && escode.where != undefined){
 	var otmp = {}; otmp['s'] = s; otmp['v'] = pickVerb(escode.where.v,escode);
 	o["status"] =otmp; gcode["chat_out"] = o;
 	return gcode;
     }
 
+    // {s: [ 'you'], v: ['can', 'smoke'], in:['the','smoking','area']}
+    if (s == 'you' && v != undefined && nin != undefined){
+	var otmp = {}; otmp['s'] = nin; otmp['v'] = v;
+	o["status"] =otmp; gcode["chat_out"] = o;
+	return gcode;
+}
+
     //{ s: [ 'the', 'bus', 'stop' ], obj2: [],  for: [ 'okazaki', 'park' ],  unprocessed: { phrase: [ 'be', 'number', '3' ] } }
-    console.log("imperative:", escode);
+    //console.log("imperative:", escode);
     if (nfor != undefined && escode.unprocessed != undefined){
 	var otmp = {}; otmp['s'] = s; otmp['for'] = nfor; otmp['def'] = pickNoun(escode.unprocessed.phrase, escode);
 	o["status"] =otmp; gcode["chat_out"] = o;
@@ -1302,92 +1164,6 @@ function affirmativeOrder(escode){
     }
     return undefined;
 }
-
-// ------------------------------------------------------
-// 入力テスト
-// > 入力文
-// if batch == true then バッチテスト、load from "test_in_sample.js"
-// if batch == false then インタラクティブ
-// ------------------------------------------------------
-
-// ----------
-// 入力テスト
-// ----------
-/*
-if (batch){ //バッチテスト
-    var text = [];
-    var textid = 0;
-    var testin = require('./test_in_sample.js');
-    var example = testin.make();
-
-    for (var i = 0; i < example.length; i++){
-	text[i] = example[i];
-    }
-    var readline = require('readline'),
-    rl = readline.createInterface(process.stdin, process.stdout),
-	prefix = '\n> ';
-
-    rl.on('line', function(line0) {
-	if (textid < text.length){ // デモ中
-	    var line = text[textid]; textid++;
-	} else if (isNaN(line0.charCodeAt(0))){ // Enterキー
-	    noEmpty = false;
-	} else{ // リアル入力
-	    line = line0;
-	}
-	try{
-	    if (noEmpty) {
-		console.log(line);
-		interpreter(line);
-	    }
-
-	} catch(e){
-	    console.log("問題が起きました。",e);
-	} finally {
-	    noEmpty = true;
-	    rl.prompt();
-	}
-
-    }).on('close', function() {
-    console.log('batch test end');
-    process.exit(0); // needed for the process ending
-    });
-    
-    rl.setPrompt(prefix, prefix.length);
-    rl.prompt();
-    }
-else { //インタラクティブテスト
-    
-    // テストデータ入力および結果の出力
-    var readline = require('readline'),
-    rl = readline.createInterface(process.stdin, process.stdout),
-	prefix = '\n> ';
-    var noEmpty = true;
-    rl.on('line', function(line0) {
-	if (isNaN(line0.charCodeAt(0))){ // Enterキー
-	    noEmpty = false;
-	} else{ // リアル入力
-	    //line = line0;
-	}
-	try{
-	    if (noEmpty) {
-		interpreter(line0);
-	    }
-	} catch(e){
-	    console.log("問題が起きました。",e);
-	} finally {
-            noEmpty = true;
-	    rl.prompt();
-	}
-    }).on('close', function() {
-	console.log('exit');
-	process.exit(0);
-    });
-    console.log('会話テスト');
-    rl.setPrompt(prefix, prefix.length);
-    rl.prompt();
-}
-*/
 
 module.exports = function (language, mode_flag, line) {
     return interpreter(language, mode_flag, line);
