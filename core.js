@@ -47,6 +47,7 @@ var eprint = false; // ecode出力
 
 var noEmpty = true; //入力状態を制御
 var dialog = "none"; // dialogモード切り替え
+var context = {};
 var complement = null; 
    // make it availableでavailableを未処理で残して場合。
    // 具体的にはunprocessedの中で設定し、pickVerbの中で使用する。
@@ -1241,11 +1242,47 @@ function affirmativeOrder(escode){
 
 function usergen(escode){
     /*
+      { stype: 'there_be',
+  v: [ 'be' ],
+  i: 20,
+  s: [ 'kick-off', 'meeting' ],
+  obj2: [],
+  in: [ 'the', '3rd', 'floor', 'meeting', 'room' ],
+  from: [ '15', 'o\'clock' ],
+  to: [ '17', 'o\'clock' ],
+  on: [ '4/18' ] }
+    */
+    /*
       {chat_out: {reserve: {title: 'kick-off meeting',  started_at: '5/10 15:00', finished_at: '5/10 17:00',  place: '3rd meeting room', participants: null}}}
      */
 
-    console.log("usergen:", escode);
-    var gcode = {}; var o = {};
+    var gcode = {}; 
+    if (escode.stype == 'there_be'){
+	var o = {}; var o2 = {};
+	o.title = escode.s[0]+" " + escode.s[1];
+	o.started_at = escode.on+" "+ escode.from[0]+":00";
+	o.finished_at = escode.on+" "+ escode.to[0]+":00";
+	o.place = escode.in[1] + " " + escode.in[3]+" "+escode.in[4];
+	o.participants = null;	
+	o2['reserve'] = o;
+	gcode['chat_out'] = o2;
+	context['reserve'] = o2;
+    }
+    else if (escode.s == 'i') {
+	/*
+	{chat_out: {visitor: {coop: "monogocoro", name: 'tanaka', check: 'ok'}}}
+	*/
+	var o = {}; var o2 = {};
+	o.coop = escode.from[0];
+	o.name = escode.obj2[0];
+	o.check = 'ok';
+	o2['visitor'] = o;
+	gcode['chat_out'] = o2;
+    }
+    else {
+	context.reserve.reserve.participants = escode.s;
+	gcode['chat_out'] = context.reserve;
+    }
     return gcode;
 }
 
