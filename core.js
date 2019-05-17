@@ -44,8 +44,9 @@ var eprint = false; // ecode出力
 // システムインタプリタ
 // -------------------
 
+
 var noEmpty = true; //入力状態を制御
-var chat = false; // チャットモード切り替え
+var dialog = "none"; // dialogモード切り替え
 var complement = null; 
    // make it availableでavailableを未処理で残して場合。
    // 具体的にはunprocessedの中で設定し、pickVerbの中で使用する。
@@ -78,7 +79,7 @@ function printInput(obj){
     }
 }
 
-function interpreter(language, mode_flag, line0){
+function interpreter(language, mode_flag, line0, dialog_mode){
 
     // all reset for global variables in this code
     nodemarks = [];
@@ -86,7 +87,7 @@ function interpreter(language, mode_flag, line0){
     tokenIdList = [];
     tokenList = [];
     complement = null;
-    chat = false;
+    dialog = "none";
 
     input["line"] = [];
     input["j2e_replace"] = [];
@@ -108,14 +109,22 @@ function interpreter(language, mode_flag, line0){
 	return sent;
     }
 
+    function dialogType(line){ // 5/17
+	var type = "none";
+	if (line.indexOf('{chat_in') != -1) type = "chat";
+	else if (line.indexOf('{user') != -1) type = "user";
+	else if (line.indexOf('{character') != -1) type =  "character";
+	return type;
+    }
+
     // 引数説明
     //    language: 'japanese' | 'english'
     //    mode_flag: 'none'（通常) | 'select'（選択） | 'command'（音声コマンド）
+    //    5/17追加 'learning' (学習モード) | 'information' (情報提供モード)
     //var line = voice_correct(line0); // 音声入力からテキスト変換の誤りを訂正
     var line = line0;
-    if (line[0] === '{'){
-	chat = true;
-        //line = JSON.parse(line).chat_in;
+    if (dialogType(line) != "none"){
+	dialog = dialogType(line);
 	line = eval(line);
     }
     console.log("line:", line);
@@ -164,7 +173,9 @@ function get_j2edic(){ //GraphDB
     var url="http://ec2-52-192-173-39.ap-northeast-1.compute.amazonaws.com:3001/j2edics.json";
     var request = require('sync-request');
     var res = request('GET', url);
+    //console.log(JSON.parse(res.getBody('utf8')));
     return JSON.parse(res.getBody('utf8'));
+
 }
 var j2edic = get_j2edic(); //j2edicデータ
 
@@ -289,7 +300,7 @@ function get_enju_xml(text0) { //call enju
 
 function preprocessing_time(s){
 
-    // miraiにかけたあとenjuに投入する前に処理。
+    // miraiにかけたあとenjuに投入する前に処理。主として、:の扱い。
     //"Isn't the Haruka that leaves at 6:22 the platform 30?"
     //=> "Isn't the Haruka that leaves at time 0622 the platform 30?"
     // 0622 is analyzed as a -YEAR-
@@ -537,10 +548,11 @@ function generateCode(line) {
     tokenIdList = [];
     tokenList = [];
 
-    //base:"-YEAR-" => "0622", base:"-NUMBER-" => "30"
+    //5/17 ここでenjuで生じる-NUMBER-を実データで置き換えてる。
+    //base:"-YEAR-" => "0622", base:"-NUMBER-" => "30" base:"-NUMBER-rd" => "3rd"
     var mirai_split = (input['mirai_extend'])[0].split(' ');
     for(var i = 0; i < ecode.length; i++){
-	if (ecode[i].pos == 'CD') ecode[i].base = mirai_split[i]
+	if (ecode[i].pos == 'CD' || ecode[i].base == "-NUMBER-rd") ecode[i].base = mirai_split[i]
     }
 }
 
@@ -559,20 +571,29 @@ function generateGcode(){
     var gtmp;
     console.log("escode:", escode);
 
-    if (chat == false){
+    if (dialog == "none"){
 	gtmp = gcode(escode);	
 	console.log("gscode:", gtmp);
 	return gtmp;
-    } else {
+    } else if (dialog == "chat") {
 	gtmp = chatgen(escode);
 	console.log("gscode:", gtmp);
 	return gtmp;
+    } else if (dialog == "user") {
+	gtmp = usergen(escode);
+	console.log("gscode:", gtmp);
+
+    } else if (dialog == "character") {
+	gtmp = charactergen(escode);
+	console.log("gscode:", gtmp);
     }
 }
 
 // -- generateEscode()
 //
 // 
+
+
 function generateEscode(){
 
     var i = 0;
@@ -653,11 +674,14 @@ function generateEscode(){
     case 'to':
 	if (ecode[i].cat != 'C') break;
 	i++; estmp = scode(i,true); escode['purpose'] = estmp; i = estmp.i;
+	break;
     default:
-	if (i < ecode.length){
-	    estmp = unprocessed(i); escode['unprocessed'] = estmp; i = estmp.i;
-	}
+	i++; estmp = scode(i,false); escode['unknown'] = estmp; i = estmp.i;
+	break;
     }
+    if (i < ecode.length){
+	estmp = unprocessed(i); escode['unprocessed'] = estmp; i = estmp.i;
+    };
     return escode;
 }
 
@@ -714,9 +738,20 @@ function scode(ti, ps){
         
 
     //主語
+    /* 5/17 for andClause()
     if(!ps){
 	o = phraseNoun(i, null); tmpi = o.i;
 	if (i != tmpi){ so['s'] = o.phrase; so['i'] = tmpi; i = tmpi }
+    }
+    */
+    if(!ps){
+	o = andClause(i);
+	if (o.i != i){ // and clause exists as subject
+	    so['s'] = o.phrase; so['i'] = o.i; i = o.i;
+	} else { // check a single subject
+	    o = phraseNoun(i, null); tmpi = o.i;
+	    if (i != tmpi){ so['s'] = o.phrase; so['i'] = tmpi; i = tmpi }
+	}
     }
     if (i > ecode.length-1) return so;
 
@@ -760,7 +795,7 @@ function phraseNoun(ti, targ){
     // targetで指定した範囲までを名詞句とする。一般的には直前の前置詞を受けて。
     var i = ti; var target = targ; var phrase = [];
     var o = {}; o['i'] = i; o['phrase'] = phrase; //返還オブジェクト
-    if (ti == ecode.length) return o; //探索範囲オーバー
+    if (i == ecode.length) return o; //探索範囲オーバー
 
     // 不定冠詞について。不定冠詞.arg1と次のトークン.arg1が等しい場合、targetを変更
     if (ecode[i].base == 'an' || ecode[i].base == 'a'){
@@ -771,8 +806,12 @@ function phraseNoun(ti, targ){
 	if (target == null && ecode[i].cat == 'D') target = ecode[i].arg1;
     }
     if (target != null){ // targetがある間、phraseにトークンを蓄える。
-	while (i < ecode.length &&  ecode[i].base != target){phrase.push(ecode[i].base); i++; };
-	phrase.push(ecode[i].base); i++; o.i = i; o.phrase = phrase; 
+	// console.log("ecode[i]:",ecode[i]); 5/16
+	while (i < ecode.length &&  ecode[i].base != target){
+	    //console.log("target:",target, " base:", ecode[i].base); // 5/17
+	    phrase.push(ecode[i].base); i++; 
+	};
+	if (i < ecode.length) phrase.push(ecode[i].base); i++; o.i = i; o.phrase = phrase;  // 5/16
     } else { //targetが未定の場合はtargetまで読む
 	if (ecode[i].base == 'a' || ecode[i].base == 'an') i++; //不定冠詞を読み飛ばす
 	while (i < ecode.length && ecode[i].cat == 'N'){
@@ -796,6 +835,38 @@ function phraseNoun(ti, targ){
     }
     return o;
 }
+
+function andClause(i){ // 5/17 added
+    /*
+    mirai: Suehiro-san, Tanaka-san, Chiba-san and Matsuda-san.
+    ecode:
+    {"cat":"N","base":"suehiro-san","pos":"NNP","pred":"noun_arg0","arg1":null,"arg2":null,"arg3":null}
+    {"cat":"CONJ","base":"-COMMA-","pos":",","pred":"coord_arg12","arg1":"suehiro-san","arg2":"tanaka-san","arg3":null,"lexetry":"[N<CONJP>N]"}
+    {"cat":"N","base":"tanaka-san","pos":"NNP","pred":"noun_arg0","arg1":null,"arg2":null,"arg3":null}
+    {"cat":"CONJ","base":"-COMMA-","pos":",","pred":"coord_arg12","arg1":"-COMMA-","arg2":"chiba-san","arg3":null,"lexetry":"[N<CONJP>N]"}
+    {"cat":"N","base":"chiba-san","pos":"NNP","pred":"noun_arg0","arg1":null,"arg2":null,"arg3":null}
+    {"cat":"CONJ","base":"and","pos":"CC","pred":"coord_arg12","arg1":"-COMMA-","arg2":"matsuda-san","arg3":null,"lexetry":"[N<CONJP>N]"}
+    {"cat":"N","base":"matsuda-san","pos":"NNP","pred":"noun_arg0","arg1":null,"arg2":null,"arg3":null}
+    */
+
+    var o = {}; var ac = [];
+    if (i == ecode.length-1){
+	o["i"] = i; o["phrase"] = ac;
+    }
+    if (i+1 < ecode.length && ecode[i+1].cat != "CONJ"){
+	o["i"] = i; o["phrase"] = ac;
+    }
+    if (i+1 < ecode.length && ecode[i+1].cat == "CONJ"){
+	var ac = []; ac.push(ecode[i].base); i++;
+	while(i < ecode.length && ecode[i].cat == "CONJ"){
+	    ac.push(ecode[i+1].base); i=i+2;
+	}
+	o["i"] = i; o["phrase"] = ac;
+	console.log("andClause:", o);
+    }
+    return o;
+}
+
 
 function adjective(ti){ //形容詞
     //the tall beautiful man のように形容的に使われるものは問題なく処理される。
@@ -860,7 +931,6 @@ function prepostion(ti){ //前置詞句
 
     var i = ti; var target; var phrase = []; var o = {}; o['i'] = i; o['phrase'] = phrase;
     if (i == ecode.length) return o;
-    if (ecode[i].cat != 'P') return o;
     //前置詞に続く名詞句の終わりを指定
     var target = ecode[i].arg2; 
     // 前置詞+現在進行系+名詞
@@ -932,15 +1002,15 @@ function gcode(escode){
     case 'imperative': break;
     case 'affirmative':
 	var target;
-	console.log("v:", v);
-	if (escode.obj2.length > 0 && obj2 != 'place') target = obj2;
+	//console.log("v:", v);
+	// 5/17 "escode.obj2 != undefined &&" added
+	if (escode.obj2 != undefined && escode.obj2.length > 0 && obj2 != 'place') target = obj2;
 	else if (escode.where != undefined) {
 	    target = pickNoun(escode.where.s, escode);
 	}
 	else if (escode.to != undefined){ // I want to go to A. 
 	    target = pickNoun(escode.to, escode);
 	}
-	console.log("target:", target);
 	gtmp["gdb"] = genPattern2(var0, v, target);
 	break;
     default:
@@ -1169,6 +1239,22 @@ function affirmativeOrder(escode){
     return undefined;
 }
 
-module.exports = function (language, mode_flag, line) {
-    return interpreter(language, mode_flag, line);
+function usergen(escode){
+    /*
+      {chat_out: {reserve: {title: 'kick-off meeting',  started_at: '5/10 15:00', finished_at: '5/10 17:00',  place: '3rd meeting room', participants: null}}}
+     */
+
+    console.log("usergen:", escode);
+    var gcode = {}; var o = {};
+    return gcode;
+}
+
+function charactergen(escode){
+    var gcode = {}; 
+    gcode['chat_out'] = 'ack';
+    return gcode;
+}
+
+module.exports = function (language, mode_flag, line, dialog_mode) {
+    return interpreter(language, mode_flag, line, dialog_mode);
 }
