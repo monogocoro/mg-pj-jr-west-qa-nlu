@@ -47,7 +47,7 @@ var eprint = false; // ecode出力
 
 var noEmpty = true; //入力状態を制御
 var dialog = "none"; // dialogモード切り替え
-var context = {};
+var dialogmode; // interpeter引数 dialog_modeの保持
 var complement = null; 
    // make it availableでavailableを未処理で残して場合。
    // 具体的にはunprocessedの中で設定し、pickVerbの中で使用する。
@@ -80,7 +80,81 @@ function printInput(obj){
     }
 }
 
-function interpreter(language, mode_flag, line0, dialog_mode){
+// interpreter()実行時、情報(JSON)をファイルを介して利用する 5/18
+var jsonfile = require('jsonfile');
+function jsonWrite(file, json){
+    jsonfile.writeFileSync(file, json, {
+        encoding: 'utf-8', 
+	replacer: null, 
+	spaces: null
+	}, function (err) {
+	});
+}
+function jsonRead(file){
+    var data;
+    data = jsonfile.readFileSync(file, {
+	encoding: 'utf-8', 
+	reviver: null, 
+	throws: true
+	});
+    return data;
+}
+//jsonWrite('context.json', {dialog:{a:1,b:2,c:["apple","orange"]}});
+//var data = jsonRead('context.json');
+//console.log(data.dialog); //{a:1,b:2,c:["apple","orange"]}
+
+// 文脈関連関数 5/17
+function contextRegister(type, json){
+    var file = 'context'+type+'.json';
+    jsonWrite(file, json);
+}
+
+function contextRead(type){
+    var file = 'context'+type+'.json';
+    var data = jsonRead(file);
+    return data;
+}
+
+function contextFrame(type){
+    switch(type){
+    case "meeting":
+	return {reserve: {title: null,  started_at: null, finished_at: null,  place: null, participants: null}};
+    }
+}
+
+function contextTypeSet(escode){
+    if (escode.stype == 'affirmative' && association(escode.s, 'meeting')){
+	contextRegister('type', 'meeting');
+    }
+    else contextRegister('type', 'unknown');
+}
+
+function contextType(){
+    var data = contextRead('type');
+    return data;
+}
+//contextTypeSet({stype: 'affirmative', s:['aaa', 'meeting']});
+//console.log(contextType());
+
+function association(arr, a){
+    // 本来はコロケーションや連想記憶、あるいは文脈から判断
+    // 5/17 まずはここから。
+    if (arr.indexOf(a) != -1) return true;
+    else return false;
+}
+
+//contextRegister('meeting', '{reservation: {data: 1}}');
+//console.log(contextRead('meeting'));
+//console.log(contextFrame('meeting'));
+
+function interpreter(language, mode_flag, dialog_mode, line0){
+
+    dialogmode = dialog_mode;
+    // 引数説明
+    //    language: 'japanese' | 'english'
+    //    mode_flag: 'none'（通常) | 'select'（選択） | 'command'（音声コマンド）
+    //    5/17追加 dialog_mode: 'learning' (学習モード) | 'information' (情報提供モード)
+    //var line = voice_correct(line0); // 音声入力からテキスト変換の誤りを訂正
 
     // all reset for global variables in this code
     nodemarks = [];
@@ -90,6 +164,7 @@ function interpreter(language, mode_flag, line0, dialog_mode){
     complement = null;
     dialog = "none";
 
+    //変換の途中結果を保持
     input["line"] = [];
     input["j2e_replace"] = [];
     input["mirai"] = [];
@@ -115,20 +190,17 @@ function interpreter(language, mode_flag, line0, dialog_mode){
 	if (line.indexOf('{chat_in') != -1) type = "chat";
 	else if (line.indexOf('{user') != -1) type = "user";
 	else if (line.indexOf('{character') != -1) type =  "character";
+	else if (line.indexOf('{learning') != -1) type =  "learning";
+	else if (line.indexOf('{information') != -1) type =  "information";
 	return type;
     }
 
-    // 引数説明
-    //    language: 'japanese' | 'english'
-    //    mode_flag: 'none'（通常) | 'select'（選択） | 'command'（音声コマンド）
-    //    5/17追加 'learning' (学習モード) | 'information' (情報提供モード)
-    //var line = voice_correct(line0); // 音声入力からテキスト変換の誤りを訂正
-    var line = line0;
-    if (dialogType(line) != "none"){
-	dialog = dialogType(line);
-	line = eval(line);
+    if (dialogType(line0) != "none"){
+	dialog = dialogType(line0);
+	line0 = eval(line0);
     }
-    console.log("line:", line);
+
+    var line = line0;
 
     if (mode_flag == "keyboard" && language == "ja"){ //ひらがな->漢字
 	//console.log("かな変換:", line);
@@ -571,7 +643,6 @@ function generateGcode(){
     var escode = generateEscode();
     var gtmp;
     console.log("escode:", escode);
-
     if (dialog == "none"){
 	gtmp = gcode(escode);	
 	console.log("gscode:", gtmp);
@@ -863,7 +934,7 @@ function andClause(i){ // 5/17 added
 	    ac.push(ecode[i+1].base); i=i+2;
 	}
 	o["i"] = i; o["phrase"] = ac;
-	console.log("andClause:", o);
+	//console.log("andClause:", o);
     }
     return o;
 }
@@ -1138,6 +1209,15 @@ function chatgen(escode){
     if(escode.stype == 'imperative'){
 	return(imperativeOrder(escode));
     }
+    else if (escode.stype == 'there_be' && dialogmode == 'learning'){
+	return(dialogLearning(escode));
+    }
+    else if (escode.stype == 'affirmative' && dialogmode == 'learning'){
+	return(dialogLearning(escode));
+    }
+    else if (escode.stype == 'affirmative' && dialogmode == 'information'){
+	return(dialogInformation(escode));
+    }
     else if (escode.stype == 'affirmative'){
 	return(affirmativeOrder(escode));
     }
@@ -1237,12 +1317,10 @@ function affirmativeOrder(escode){
 	o["status"] =otmp; gcode["chat_out"] = o;
 	return gcode;
     }
-    return undefined;
 }
 
-function usergen(escode){
-    /*
-      { stype: 'there_be',
+   /*
+ { stype: 'there_be',
   v: [ 'be' ],
   i: 20,
   s: [ 'kick-off', 'meeting' ],
@@ -1256,9 +1334,9 @@ function usergen(escode){
       {chat_out: {reserve: {title: 'kick-off meeting',  started_at: '5/10 15:00', finished_at: '5/10 17:00',  place: '3rd meeting room', participants: null}}}
      */
 
-    var gcode = {}; 
+function dialogLearning(escode){
     if (escode.stype == 'there_be'){
-	var o = {}; var o2 = {};
+	var o = {}; var o2 = {}; var gcode = {};
 	o.title = escode.s[0]+" " + escode.s[1];
 	o.started_at = escode.on+" "+ escode.from[0]+":00";
 	o.finished_at = escode.on+" "+ escode.to[0]+":00";
@@ -1266,23 +1344,27 @@ function usergen(escode){
 	o.participants = null;	
 	o2['reserve'] = o;
 	gcode['chat_out'] = o2;
-	context['reserve'] = o2;
+	contextRegister('meeting', o2);
+	return gcode;
     }
-    else if (escode.s == 'i') {
-	/*
-	{chat_out: {visitor: {coop: "monogocoro", name: 'tanaka', check: 'ok'}}}
-	*/
-	var o = {}; var o2 = {};
-	o.coop = escode.from[0];
-	o.name = escode.obj2[0];
-	o.check = 'ok';
-	o2['visitor'] = o;
+    if (escode.stype == 'affirmative'){
+	var o2 = contextRead('meeting');
+	var gcode = {};
+	o2.participants = escode.s;
 	gcode['chat_out'] = o2;
+	return gcode;
     }
-    else {
-	context.reserve.reserve.participants = escode.s;
-	gcode['chat_out'] = context.reserve;
-    }
+}
+
+function dialogInformation(escode){
+
+    //{chat_out: {visitor: {coop: "monogocoro", name: 'tanaka', check: 'ok'}}}
+    var o = {}; var o2 = {}; gcode = {};
+    o.coop = escode.from[0];
+    o.name = escode.obj2[0];
+    o.check = 'ok';
+    o2['visitor'] = o;
+    gcode['chat_out'] = o2;
     return gcode;
 }
 
@@ -1292,6 +1374,6 @@ function charactergen(escode){
     return gcode;
 }
 
-module.exports = function (language, mode_flag, line, dialog_mode) {
-    return interpreter(language, mode_flag, line, dialog_mode);
+module.exports = function (language, mode_flag, dialog_mode, line) {
+    return interpreter(language, mode_flag, dialog_mode, line);
 }
