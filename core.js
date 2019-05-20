@@ -1076,7 +1076,7 @@ function gcode(escode){
 	break;
     case 'imperative': break;
     case 'affirmative':
-	var target;
+	var target = pickNoun(escode.s, escode); // 5/20 単語のみをwhere句とする
 	//console.log("v:", v);
 	// 5/17 "escode.obj2 != undefined &&" added
 	if (escode.obj2 != undefined && escode.obj2.length > 0 && obj2 != 'place') target = obj2;
@@ -1086,6 +1086,7 @@ function gcode(escode){
 	else if (escode.to != undefined){ // I want to go to A. 
 	    target = pickNoun(escode.to, escode);
 	}
+	console.log("var0:", var0, " v:",v, " target:", target);
 	gtmp["gdb"] = genPattern2(var0, v, target);
 	break;
     default:
