@@ -677,6 +677,7 @@ function generateEscode(){
 	escode = o; escode['stype'] = 'imperative'; return escode;
     }
 
+
     switch(ecode[i].base){
     case 'be': 
 	// be there
@@ -709,6 +710,7 @@ function generateEscode(){
 	escode = scode(i,false); i = escode.i; 
 	break;
     case 'when': case 'where': case 'why': case 'how':
+	// 5/20 "why" 単独時、iが未定義になる。
 	i++; escode = scode(i,false); escode['stype'] = ecode[i-1].base; i = escode.i;
 	break;
     case 'which':
@@ -790,7 +792,8 @@ function scode(ti, ps){
     //ps:provisional subject 仮主語
     var i = ti;
     var tmpi; 
-    var so = {}; so['stype'] = 'affirmative'; //scode object
+    // 5/20 so['i'] = i;を追加。ecodeが一語の時に対応。
+    var so = {}; so['stype'] = 'affirmative'; so['i'] = i;//scode object
     var o; //scode temporay object
     var escode;
     var etmp;
