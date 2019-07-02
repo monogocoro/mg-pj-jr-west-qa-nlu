@@ -1370,7 +1370,7 @@ function dialogLearning(escode){
     if (escode.stype == 'affirmative'){
 	var o2 = contextRead('meeting');
 	var gcode = {};
-	o2.participants = escode.s;
+        o2.reserve.participants = escode.s;
 	gcode['chat_out'] = o2;
 	return gcode;
     }
