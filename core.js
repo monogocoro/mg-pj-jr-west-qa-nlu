@@ -236,7 +236,7 @@ function interpreter(language, mode_flag, dialog_mode, line0){
     generateCode(line); // lineを引数にとっているが現在は未使用。
 
     // gremlin code 生成
-    return(generateGcode());
+    return {query: (generateGcode()), input: input};
 }
 
 //
@@ -352,7 +352,9 @@ function not_tokenSplit(s0){
 function get_ja2en(text) { //call みらい
     
     var params_text = text.replace(/\s+/g, "");
-    var url = 'https://preprocessor.monogocoro.ai/ja2en/' + encodeURIComponent(params_text);
+    var url = "https://preprocessor.monogocoro.ai/translate?sentence="+encodeURIComponent(text);
+    url = url + "&from=ja&to=en";
+    // var url = 'https://preprocessor.monogocoro.ai/ja2en/' + encodeURIComponent(params_text);
     // for goolish: add "?google=True" in the last of the sentence
     var request = require('sync-request');
     var res = request('GET', url);
